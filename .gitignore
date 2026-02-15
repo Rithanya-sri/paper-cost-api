@@ -1,0 +1,6 @@
+node_modules/
+.env
+.local_dev.db
+.wrangler
+dist
+.next
