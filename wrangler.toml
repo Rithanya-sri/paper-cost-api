@@ -1,0 +1,9 @@
+name = "paper-cost-api"
+main = "src/index.ts"
+compatibility_date = "2024-05-02"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "paper_cost_db"
+database_id = "0f2f3005-1aaa-494a-997b-fde3d05ca605"
+
