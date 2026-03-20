@@ -31,12 +31,12 @@ export default {
             });
         }
 
-        // Production records route: /api/production/[[id]]
-        if (path.startsWith("/api/production")) {
-            const parts = path.split("/").filter(Boolean);
-            const id = parts[2] || null; // /api/production/:id -> index 2
+        try {
+            // Production records route: /api/production/[[id]]
+            if (path.startsWith("/api/production")) {
+                const parts = path.split("/").filter(Boolean);
+                const id = parts[2] || null; // /api/production/:id -> index 2
 
-            try {
                 if (method === 'GET') {
                     if (id) {
                         const result = await env.DB.prepare(
@@ -70,10 +70,12 @@ export default {
                             outer_paste_quantity, outer_paste_rate, outer_paste_cost, outer_paste_cost_per_tube,
                             packing_quantity, packing_rate, packing_cost, packing_cost_per_tube,
                             labour_count, labour_wage, labour_cost, labour_cost_per_tube,
-                            eb_units, eb_amount, eb_cost_per_tube,
+                            eb_units, electricity_rate, eb_amount, eb_cost_per_tube,
                             overheads_amount, overheads_cost_per_tube,
                             food_amount, food_cost_per_tube,
-                            grand_total_cost_per_tube
+                            others_amount,
+                            grand_total_cost_per_tube,
+                            rate_snapshot_used_that_day
                         ) VALUES (
                             ?, ?, ?,
                             ?, ?, ?, ?,
@@ -81,9 +83,11 @@ export default {
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
-                            ?, ?, ?,
+                            ?, ?, ?, ?,
                             ?, ?,
                             ?, ?,
+                            ?,
+                            ?,
                             ?
                         )
                     `).bind(
@@ -93,10 +97,12 @@ export default {
                         calculated.outer_paste_quantity, calculated.outer_paste_rate, calculated.outer_paste_cost, calculated.outer_paste_cost_per_tube,
                         calculated.packing_quantity, calculated.packing_rate, calculated.packing_cost, calculated.packing_cost_per_tube,
                         calculated.labour_count, calculated.labour_wage, calculated.labour_cost, calculated.labour_cost_per_tube,
-                        calculated.eb_units, calculated.eb_amount, calculated.eb_cost_per_tube,
+                        calculated.eb_units, calculated.electricity_rate || 0, calculated.eb_amount, calculated.eb_cost_per_tube,
                         calculated.overheads_amount, calculated.overheads_cost_per_tube,
                         calculated.food_amount, calculated.food_cost_per_tube,
-                        calculated.grand_total_cost_per_tube
+                        calculated.others_amount || 0,
+                        calculated.grand_total_cost_per_tube,
+                        calculated.rate_snapshot_used_that_day || 0
                     ).run();
 
                     return new Response(JSON.stringify({
@@ -121,10 +127,12 @@ export default {
                             outer_paste_quantity = ?, outer_paste_rate = ?, outer_paste_cost = ?, outer_paste_cost_per_tube = ?,
                             packing_quantity = ?, packing_rate = ?, packing_cost = ?, packing_cost_per_tube = ?,
                             labour_count = ?, labour_wage = ?, labour_cost = ?, labour_cost_per_tube = ?,
-                            eb_units = ?, eb_amount = ?, eb_cost_per_tube = ?,
+                            eb_units = ?, electricity_rate = ?, eb_amount = ?, eb_cost_per_tube = ?,
                             overheads_amount = ?, overheads_cost_per_tube = ?,
                             food_amount = ?, food_cost_per_tube = ?,
+                            others_amount = ?,
                             grand_total_cost_per_tube = ?,
+                            rate_snapshot_used_that_day = ?,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     `).bind(
@@ -134,10 +142,12 @@ export default {
                         calculated.outer_paste_quantity, calculated.outer_paste_rate, calculated.outer_paste_cost, calculated.outer_paste_cost_per_tube,
                         calculated.packing_quantity, calculated.packing_rate, calculated.packing_cost, calculated.packing_cost_per_tube,
                         calculated.labour_count, calculated.labour_wage, calculated.labour_cost, calculated.labour_cost_per_tube,
-                        calculated.eb_units, calculated.eb_amount, calculated.eb_cost_per_tube,
+                        calculated.eb_units, calculated.electricity_rate || 0, calculated.eb_amount, calculated.eb_cost_per_tube,
                         calculated.overheads_amount, calculated.overheads_cost_per_tube,
                         calculated.food_amount, calculated.food_cost_per_tube,
+                        calculated.others_amount || 0,
                         calculated.grand_total_cost_per_tube,
+                        calculated.rate_snapshot_used_that_day || 0,
                         id
                     ).run();
 
@@ -151,19 +161,49 @@ export default {
 
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
-
-            } catch (error: any) {
-                return new Response(JSON.stringify({ error: error.message }), {
-                    status: 500,
-                    headers: corsHeaders,
-                });
             }
-        }
 
-        return new Response(JSON.stringify({ error: 'Not found' }), {
-            status: 404,
-            headers: corsHeaders,
-        });
+            // Market rates route: /api/rates
+            if (path === '/api/rates') {
+                if (method === 'GET') {
+                    const result = await env.DB.prepare(
+                        'SELECT * FROM rate_master ORDER BY updated_at DESC LIMIT 1'
+                    ).first();
+                    return new Response(JSON.stringify(result || {}), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json();
+                    const result = await env.DB.prepare(`
+                        INSERT INTO rate_master (
+                            paper_rate, paste_rate, outer_paste_rate, packing_rate, labour_wage, electricity_rate, eb_amount
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    `).bind(
+                        data.paper_rate,
+                        data.paste_rate,
+                        data.outer_paste_rate,
+                        data.packing_rate,
+                        data.labour_wage,
+                        data.electricity_rate || 0,
+                        data.eb_amount || 0
+                    ).run();
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), {
+                        status: 201,
+                        headers: corsHeaders
+                    });
+                }
+            }
+
+            return new Response(JSON.stringify({ error: 'Not found' }), {
+                status: 404,
+                headers: corsHeaders,
+            });
+
+        } catch (error: any) {
+            return new Response(JSON.stringify({ error: error.message }), {
+                status: 500,
+                headers: corsHeaders,
+            });
+        }
     }
 };
 
@@ -197,6 +237,7 @@ function calculateRecord(data: any) {
     const eb_cost_per_tube = safeDivide(data.eb_amount, production);
     const overheads_cost_per_tube = safeDivide(data.overheads_amount, production);
     const food_cost_per_tube = safeDivide(data.food_amount, production);
+    const others_cost_per_tube = safeDivide(data.others_amount, production);
 
     const grand_total_cost_per_tube = round(
         paper_cost_per_tube +
@@ -206,7 +247,8 @@ function calculateRecord(data: any) {
         labour_cost_per_tube +
         eb_cost_per_tube +
         overheads_cost_per_tube +
-        food_cost_per_tube
+        food_cost_per_tube +
+        others_cost_per_tube
     );
 
     return {
@@ -222,8 +264,13 @@ function calculateRecord(data: any) {
         labour_cost,
         labour_cost_per_tube,
         eb_cost_per_tube,
+        overheads_amount: data.overheads_amount || 0,
         overheads_cost_per_tube,
+        food_amount: data.food_amount || 0,
         food_cost_per_tube,
+        others_amount: data.others_amount || 0,
+        others_cost_per_tube,
+        electricity_rate: data.electricity_rate || 0,
         grand_total_cost_per_tube,
     };
 }

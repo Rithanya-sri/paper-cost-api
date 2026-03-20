@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS daily_production_records (
   
   -- 6. EB (Electricity) Cost
   eb_units REAL NOT NULL,
+  electricity_rate REAL NOT NULL DEFAULT 0,
   eb_amount REAL NOT NULL,
   eb_cost_per_tube REAL NOT NULL,       -- amount ÷ production
   
@@ -52,8 +53,14 @@ CREATE TABLE IF NOT EXISTS daily_production_records (
   food_amount REAL NOT NULL,
   food_cost_per_tube REAL NOT NULL,     -- amount ÷ production
   
+  -- 9. Others
+  others_amount REAL NOT NULL DEFAULT 0,
+  
   -- Grand Total
   grand_total_cost_per_tube REAL NOT NULL, -- Sum of all cost_per_tube values
+  
+  -- Flag to lock old records from auto-updating
+  rate_snapshot_used_that_day INTEGER NOT NULL DEFAULT 0,
   
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -61,3 +68,16 @@ CREATE TABLE IF NOT EXISTS daily_production_records (
 
 -- Index for faster date-based queries
 CREATE INDEX IF NOT EXISTS idx_date ON daily_production_records(date DESC);
+
+-- Table to store current market rates (for auto-filling new records)
+CREATE TABLE IF NOT EXISTS rate_master (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  paper_rate REAL NOT NULL,
+  paste_rate REAL NOT NULL,
+  outer_paste_rate REAL NOT NULL,
+  packing_rate REAL NOT NULL,
+  labour_wage REAL NOT NULL,  -- maps to avg_wage_per_day in requirements
+  electricity_rate REAL NOT NULL DEFAULT 0,
+  eb_amount REAL NOT NULL DEFAULT 0,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
