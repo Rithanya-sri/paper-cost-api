@@ -74,6 +74,7 @@ export default {
                             overheads_amount, overheads_cost_per_tube,
                             food_amount, food_cost_per_tube,
                             others_amount,
+                            waste_quantity_kg, waste_rate, waste_cost, waste_cost_per_tube,
                             grand_total_cost_per_tube,
                             rate_snapshot_used_that_day
                         ) VALUES (
@@ -87,6 +88,7 @@ export default {
                             ?, ?,
                             ?, ?,
                             ?,
+                            ?, ?, ?, ?,
                             ?,
                             ?
                         )
@@ -101,6 +103,7 @@ export default {
                         calculated.overheads_amount, calculated.overheads_cost_per_tube,
                         calculated.food_amount, calculated.food_cost_per_tube,
                         calculated.others_amount || 0,
+                        calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0
                     ).run();
@@ -131,6 +134,7 @@ export default {
                             overheads_amount = ?, overheads_cost_per_tube = ?,
                             food_amount = ?, food_cost_per_tube = ?,
                             others_amount = ?,
+                            waste_quantity_kg = ?, waste_rate = ?, waste_cost = ?, waste_cost_per_tube = ?,
                             grand_total_cost_per_tube = ?,
                             rate_snapshot_used_that_day = ?,
                             updated_at = CURRENT_TIMESTAMP
@@ -146,6 +150,7 @@ export default {
                         calculated.overheads_amount, calculated.overheads_cost_per_tube,
                         calculated.food_amount, calculated.food_cost_per_tube,
                         calculated.others_amount || 0,
+                        calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0,
                         id
@@ -175,8 +180,8 @@ export default {
                     const data = await request.json();
                     const result = await env.DB.prepare(`
                         INSERT INTO rate_master (
-                            paper_rate, paste_rate, outer_paste_rate, packing_rate, labour_wage, electricity_rate, eb_amount
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            paper_rate, paste_rate, outer_paste_rate, packing_rate, labour_wage, electricity_rate, eb_amount, waste_rate
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     `).bind(
                         data.paper_rate,
                         data.paste_rate,
@@ -184,7 +189,8 @@ export default {
                         data.packing_rate,
                         data.labour_wage,
                         data.electricity_rate || 0,
-                        data.eb_amount || 0
+                        data.eb_amount || 0,
+                        data.waste_rate || 0
                     ).run();
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), {
                         status: 201,
@@ -239,6 +245,12 @@ function calculateRecord(data: any) {
     const food_cost_per_tube = safeDivide(data.food_amount, production);
     const others_cost_per_tube = safeDivide(data.others_amount, production);
 
+    // 10. Waste Cost
+    const waste_quantity_kg = data.waste_quantity_kg || 0;
+    const waste_rate = data.waste_rate || 0;
+    const waste_cost = round(waste_quantity_kg * waste_rate);
+    const waste_cost_per_tube = safeDivide(waste_cost, production);
+
     const grand_total_cost_per_tube = round(
         paper_cost_per_tube +
         paste_cost_per_tube +
@@ -248,7 +260,8 @@ function calculateRecord(data: any) {
         eb_cost_per_tube +
         overheads_cost_per_tube +
         food_cost_per_tube +
-        others_cost_per_tube
+        others_cost_per_tube +
+        waste_cost_per_tube
     );
 
     return {
@@ -271,6 +284,10 @@ function calculateRecord(data: any) {
         others_amount: data.others_amount || 0,
         others_cost_per_tube,
         electricity_rate: data.electricity_rate || 0,
+        waste_quantity_kg,
+        waste_rate,
+        waste_cost,
+        waste_cost_per_tube,
         grand_total_cost_per_tube,
     };
 }
