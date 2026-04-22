@@ -260,13 +260,26 @@ export default {
             // --- ATTENDANCE API ---
             if (path === '/api/attendance') {
                 const date = url.searchParams.get('date');
-                if (method === 'GET' && date) {
-                    const result = await env.DB.prepare(`
+                const startDate = url.searchParams.get('startDate');
+                const endDate = url.searchParams.get('endDate');
+
+                if (method === 'GET' && (date || (startDate && endDate))) {
+                    let query = `
                         SELECT a.*, l.name as labor_name 
                         FROM labor_attendance a
                         JOIN labors l ON a.labor_id = l.id
-                        WHERE a.date = ?
-                    `).bind(date).all();
+                        WHERE `;
+                    
+                    let params = [];
+                    if (date) {
+                        query += `a.date = ?`;
+                        params.push(date);
+                    } else {
+                        query += `a.date BETWEEN ? AND ?`;
+                        params.push(startDate, endDate);
+                    }
+                    
+                    const result = await env.DB.prepare(query).bind(...params).all();
                     return new Response(JSON.stringify(result.results), { headers: corsHeaders });
                 }
 
