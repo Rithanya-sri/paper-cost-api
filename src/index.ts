@@ -74,6 +74,7 @@ export default {
                             overheads_amount, overheads_cost_per_tube,
                             food_amount, food_cost_per_tube,
                             others_amount,
+                            waste_quantity_kg, waste_rate, waste_cost, waste_cost_per_tube,
                             grand_total_cost_per_tube,
                             rate_snapshot_used_that_day
                         ) VALUES (
@@ -87,6 +88,7 @@ export default {
                             ?, ?,
                             ?, ?,
                             ?,
+                            ?, ?, ?, ?,
                             ?,
                             ?
                         )
@@ -101,6 +103,7 @@ export default {
                         calculated.overheads_amount, calculated.overheads_cost_per_tube,
                         calculated.food_amount, calculated.food_cost_per_tube,
                         calculated.others_amount || 0,
+                        calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0
                     ).run();
@@ -131,6 +134,7 @@ export default {
                             overheads_amount = ?, overheads_cost_per_tube = ?,
                             food_amount = ?, food_cost_per_tube = ?,
                             others_amount = ?,
+                            waste_quantity_kg = ?, waste_rate = ?, waste_cost = ?, waste_cost_per_tube = ?,
                             grand_total_cost_per_tube = ?,
                             rate_snapshot_used_that_day = ?,
                             updated_at = CURRENT_TIMESTAMP
@@ -146,6 +150,7 @@ export default {
                         calculated.overheads_amount, calculated.overheads_cost_per_tube,
                         calculated.food_amount, calculated.food_cost_per_tube,
                         calculated.others_amount || 0,
+                        calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0,
                         id
@@ -190,6 +195,95 @@ export default {
                         status: 201,
                         headers: corsHeaders
                     });
+                }
+            }
+
+            // --- LABORS API ---
+            if (path.startsWith('/api/labors')) {
+                const parts = path.split("/").filter(Boolean);
+                const id = parts[2] || null;
+
+                if (method === 'GET') {
+                    // Fetch labors with their latest salary
+                    const date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
+                    const result = await env.DB.prepare(`
+                        SELECT l.*, 
+                        (SELECT salary FROM labor_salary_history 
+                         WHERE labor_id = l.id AND effective_date <= ? 
+                         ORDER BY effective_date DESC, created_at DESC LIMIT 1) as current_salary
+                        FROM labors l
+                        ORDER BY l.name ASC
+                    `).bind(date).all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+
+                if (method === 'POST') {
+                    const data = await request.json();
+                    // Part 1: Insert Labor
+                    const result = await env.DB.prepare(`
+                        INSERT INTO labors (name, is_active) VALUES (?, ?)
+                    `).bind(data.name, 1).run();
+                    const laborId = result.meta.last_row_id;
+                    
+                    // Part 2: Insert initial salary if provided
+                    if (data.salary) {
+                        await env.DB.prepare(`
+                            INSERT INTO labor_salary_history (labor_id, salary, effective_date)
+                            VALUES (?, ?, ?)
+                        `).bind(laborId, data.salary, data.effective_date || new Date().toISOString().split('T')[0]).run();
+                    }
+
+                    return new Response(JSON.stringify({ success: true, id: laborId }), { status: 201, headers: corsHeaders });
+                }
+
+                if (method === 'PUT' && id) {
+                    const data = await request.json();
+                    if (data.action === 'update_salary') {
+                        await env.DB.prepare(`
+                            INSERT INTO labor_salary_history (labor_id, salary, effective_date)
+                            VALUES (?, ?, ?)
+                        `).bind(id, data.salary, data.effective_date).run();
+                    } else {
+                        await env.DB.prepare(`
+                            UPDATE labors SET name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+                        `).bind(data.name, data.is_active, id).run();
+                    }
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+
+                if (method === 'DELETE' && id) {
+                    await env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
+            // --- ATTENDANCE API ---
+            if (path === '/api/attendance') {
+                const date = url.searchParams.get('date');
+                if (method === 'GET' && date) {
+                    const result = await env.DB.prepare(`
+                        SELECT a.*, l.name as labor_name 
+                        FROM labor_attendance a
+                        JOIN labors l ON a.labor_id = l.id
+                        WHERE a.date = ?
+                    `).bind(date).all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+
+                if (method === 'POST') {
+                    const data = await request.json(); // { date: '...', items: [ {labor_id, shifts, salary_rate_at_time} ] }
+                    
+                    // Delete existing for that date first (to overwrite)
+                    await env.DB.prepare('DELETE FROM labor_attendance WHERE date = ?').bind(data.date).run();
+                    
+                    for (const item of data.items) {
+                        await env.DB.prepare(`
+                            INSERT INTO labor_attendance (date, labor_id, shifts, salary_rate_at_time)
+                            VALUES (?, ?, ?, ?)
+                        `).bind(data.date, item.labor_id, item.shifts, item.salary_rate_at_time).run();
+                    }
+                    
+                    return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
                 }
             }
 
@@ -239,6 +333,9 @@ function calculateRecord(data: any) {
     const food_cost_per_tube = safeDivide(data.food_amount, production);
     const others_cost_per_tube = safeDivide(data.others_amount, production);
 
+    const waste_cost = round(data.waste_quantity_kg * data.waste_rate);
+    const waste_cost_per_tube = safeDivide(waste_cost, production);
+
     const grand_total_cost_per_tube = round(
         paper_cost_per_tube +
         paste_cost_per_tube +
@@ -248,7 +345,8 @@ function calculateRecord(data: any) {
         eb_cost_per_tube +
         overheads_cost_per_tube +
         food_cost_per_tube +
-        others_cost_per_tube
+        others_cost_per_tube +
+        waste_cost_per_tube
     );
 
     return {
@@ -270,6 +368,10 @@ function calculateRecord(data: any) {
         food_cost_per_tube,
         others_amount: data.others_amount || 0,
         others_cost_per_tube,
+        waste_quantity_kg: data.waste_quantity_kg || 0,
+        waste_rate: data.waste_rate || 0,
+        waste_cost,
+        waste_cost_per_tube,
         electricity_rate: data.electricity_rate || 0,
         grand_total_cost_per_tube,
     };

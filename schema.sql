@@ -81,3 +81,38 @@ CREATE TABLE IF NOT EXISTS rate_master (
   eb_amount REAL NOT NULL DEFAULT 0,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 1. Labor Master Table
+CREATE TABLE IF NOT EXISTS labors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Salary History Table (Tracks salary changes over time)
+CREATE TABLE IF NOT EXISTS labor_salary_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  labor_id INTEGER NOT NULL,
+  salary REAL NOT NULL,
+  effective_date TEXT NOT NULL,  -- YYYY-MM-DD
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (labor_id) REFERENCES labors(id) ON DELETE CASCADE
+);
+
+-- 3. Labor Attendance Table
+CREATE TABLE IF NOT EXISTS labor_attendance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  labor_id INTEGER NOT NULL,
+  shifts REAL NOT NULL,
+  salary_rate_at_time REAL NOT NULL, -- Snapshot of salary at that time
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (labor_id) REFERENCES labors(id) ON DELETE CASCADE,
+  UNIQUE(date, labor_id)
+);
+
+-- Index for faster attendance lookups
+CREATE INDEX IF NOT EXISTS idx_attendance_date ON labor_attendance(date);
+
