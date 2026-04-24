@@ -115,10 +115,30 @@ export default {
         }
 
         try {
-            // Production records route: /api/production/[[id]]
-            if (path.startsWith("/api/production")) {
-                const parts = path.split("/").filter(Boolean);
-                const id = parts[2] || null;
+            // Labors route - MOVED TO TOP FOR PRIORITY
+            if (path.includes('/api/labors')) {
+                if (method === 'GET') {
+                    const date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
+                    const result = await env.DB.prepare(`
+                        SELECT l.*, (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND effective_date <= ? ORDER BY effective_date DESC, created_at DESC LIMIT 1) as current_salary
+                        FROM labors l ORDER BY l.name ASC
+                    `).bind(date).all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can add labors" }), { status: 403, headers: corsHeaders });
+                    const data = await request.json() as any;
+                    const result = await env.DB.prepare('INSERT INTO labors (name, is_active) VALUES (?, ?)').bind(data.name, 1).run();
+                    if (data.salary) await env.DB.prepare('INSERT INTO labor_salary_history (labor_id, salary, effective_date) VALUES (?, ?, ?)').bind(result.meta.last_row_id, data.salary, data.effective_date || new Date().toISOString().split('T')[0]).run();
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+                if (method === 'DELETE') {
+                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete labors" }), { status: 403, headers: corsHeaders });
+                    const id = url.searchParams.get('id');
+                    await env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
 
                 if (method === 'GET') {
                     if (id) {
@@ -239,32 +259,7 @@ export default {
                 }
             }
 
-            // Labors route
-            if (path.includes('/api/labors')) {
-                const parts = path.split("/").filter(Boolean);
-                const id = parts[2] || null;
-                if (method === 'GET') {
-                    const date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
-                    const result = await env.DB.prepare(`
-                        SELECT l.*, (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND effective_date <= ? ORDER BY effective_date DESC, created_at DESC LIMIT 1) as current_salary
-                        FROM labors l ORDER BY l.name ASC
-                    `).bind(date).all();
-                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
-                }
-                if (method === 'POST') {
-                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can add labors" }), { status: 403, headers: corsHeaders });
-                    const data = await request.json() as any;
-                    const result = await env.DB.prepare('INSERT INTO labors (name, is_active) VALUES (?, ?)').bind(data.name, 1).run();
-                    if (data.salary) await env.DB.prepare('INSERT INTO labor_salary_history (labor_id, salary, effective_date) VALUES (?, ?, ?)').bind(result.meta.last_row_id, data.salary, data.effective_date || new Date().toISOString().split('T')[0]).run();
-                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
-                }
-                if (method === 'DELETE') {
-                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete labors" }), { status: 403, headers: corsHeaders });
-                    const id = url.searchParams.get('id');
-                    await env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id).run();
-                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
-                }
-            }
+
 
             // Attendance route
             if (path === '/api/attendance') {
