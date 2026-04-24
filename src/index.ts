@@ -120,7 +120,13 @@ export default {
                 if (method === 'GET') {
                     const date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
                     const result = await env.DB.prepare(`
-                        SELECT l.*, (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND effective_date <= ? ORDER BY effective_date DESC, created_at DESC LIMIT 1) as current_salary
+                        SELECT l.*, (
+                            SELECT COALESCE(
+                                (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND effective_date <= ? AND salary > 0 ORDER BY effective_date DESC, created_at DESC LIMIT 1),
+                                (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND salary > 0 ORDER BY effective_date DESC, created_at DESC LIMIT 1),
+                                0
+                            )
+                        ) as current_salary
                         FROM labors l 
                         WHERE l.is_active = 1
                         ORDER BY l.name ASC
