@@ -166,6 +166,28 @@ export default {
                         return new Response(JSON.stringify({ error: "Failed to delete labor: " + err.message }), { status: 500, headers: corsHeaders });
                     }
                 }
+                if (method === 'PUT') {
+                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can update labors" }), { status: 403, headers: corsHeaders });
+                    const id = url.pathname.split('/').pop();
+                    const data = await request.json() as any;
+                    
+                    // Support both naming conventions
+                    const salary = data.current_salary ?? data.salary ?? null;
+                    
+                    await env.DB.prepare(`
+                        UPDATE labors 
+                        SET name = COALESCE(?, name), 
+                            is_active = COALESCE(?, is_active) 
+                        WHERE id = ?
+                    `).bind(data.name ?? null, data.is_active ?? null, id).run();
+
+                    // If salary is provided, also insert into history
+                    if (salary !== null) {
+                        await env.DB.prepare('INSERT INTO labor_salary_history (labor_id, salary, effective_date) VALUES (?, ?, ?)').bind(id, salary, data.effective_date || new Date().toISOString().split('T')[0]).run();
+                    }
+
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
             }
 
             // Production route
