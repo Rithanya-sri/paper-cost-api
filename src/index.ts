@@ -136,22 +136,29 @@ export default {
                 }
                 if (method === 'DELETE') {
                     if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete labors" }), { status: 403, headers: corsHeaders });
-                    const id = url.searchParams.get('id');
+                    const idStr = url.searchParams.get('id');
+                    if (!idStr) return new Response(JSON.stringify({ error: "Missing labor ID" }), { status: 400, headers: corsHeaders });
+                    const id = parseInt(idStr, 10);
                     
-                    // Manually delete all dependent data to satisfy foreign key constraints
-                    await env.DB.batch([
-                        env.DB.prepare('DELETE FROM labor_attendance WHERE labor_id = ?').bind(id),
-                        env.DB.prepare('DELETE FROM labor_salary_history WHERE labor_id = ?').bind(id),
-                        env.DB.prepare('DELETE FROM labor_weekly_adjustments WHERE labor_id = ?').bind(id),
-                        env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id)
-                    ]);
-                    
-                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                    try {
+                        // Manually delete all dependent data to satisfy foreign key constraints
+                        await env.DB.batch([
+                            env.DB.prepare('DELETE FROM labor_attendance WHERE labor_id = ?').bind(id),
+                            env.DB.prepare('DELETE FROM labor_salary_history WHERE labor_id = ?').bind(id),
+                            env.DB.prepare('DELETE FROM labor_weekly_adjustments WHERE labor_id = ?').bind(id),
+                            env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id)
+                        ]);
+                        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                    } catch (err: any) {
+                        return new Response(JSON.stringify({ error: "Failed to delete labor: " + err.message }), { status: 500, headers: corsHeaders });
+                    }
                 }
             }
 
-                if (method === 'GET') {
-                    if (id) {
+            // Production route
+            if (path.startsWith('/api/production') || path === '/api/paper-cost') {                if (method === 'GET') {
+                    const id = url.pathname.split('/').pop();
+                    if (id && id !== 'production' && id !== 'paper-cost') {
                         const result = await env.DB.prepare(
                             'SELECT * FROM daily_production_records WHERE id = ?'
                         ).bind(id).first();
@@ -205,7 +212,9 @@ export default {
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id, ...calculated }), { status: 201, headers: corsHeaders });
                 }
 
-                if (method === 'PUT' && id) {
+                if (method === 'PUT') {
+                    const id = url.pathname.split('/').pop();
+                    if (!id || id === 'production') return new Response(JSON.stringify({ error: "Missing record ID" }), { status: 400, headers: corsHeaders });
                     if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can update records" }), { status: 403, headers: corsHeaders });
                     const data = await request.json() as any;
                     const calculated = calculateRecord(data);
@@ -245,7 +254,9 @@ export default {
                     return new Response(JSON.stringify({ success: true, ...calculated }), { headers: corsHeaders });
                 }
 
-                if (method === 'DELETE' && id) {
+                if (method === 'DELETE') {
+                    const id = url.pathname.split('/').pop();
+                    if (!id || id === 'production') return new Response(JSON.stringify({ error: "Missing record ID" }), { status: 400, headers: corsHeaders });
                     if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete records" }), { status: 403, headers: corsHeaders });
                     await env.DB.prepare('DELETE FROM daily_production_records WHERE id = ?').bind(id).run();
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
