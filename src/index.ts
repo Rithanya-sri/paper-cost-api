@@ -121,7 +121,9 @@ export default {
                     const date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
                     const result = await env.DB.prepare(`
                         SELECT l.*, (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND effective_date <= ? ORDER BY effective_date DESC, created_at DESC LIMIT 1) as current_salary
-                        FROM labors l ORDER BY l.name ASC
+                        FROM labors l 
+                        WHERE l.is_active = 1
+                        ORDER BY l.name ASC
                     `).bind(date).all();
                     return new Response(JSON.stringify(result.results), { headers: corsHeaders });
                 }
@@ -135,7 +137,8 @@ export default {
                 if (method === 'DELETE') {
                     if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete labors" }), { status: 403, headers: corsHeaders });
                     const id = url.searchParams.get('id');
-                    await env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id).run();
+                    // Soft delete: set is_active to 0
+                    await env.DB.prepare('UPDATE labors SET is_active = 0 WHERE id = ?').bind(id).run();
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
             }
