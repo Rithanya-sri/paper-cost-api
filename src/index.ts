@@ -11,10 +11,10 @@ const GOOGLE_CERT_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/secur
 const OWNER_EMAILS = [
     "goldconeserode@gmail.com",
     "thangam44445@gmail.com",
+    "goldconesoffice@gmail.com",
 ];
 
 const SUPERVISOR_EMAILS = [
-    "goldconesoffice@gmail.com",
     "rithanya.sri04@gmail.com",
     "goldconesae@gmail.com",
 ];
