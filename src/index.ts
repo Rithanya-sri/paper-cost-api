@@ -138,11 +138,12 @@ export default {
                     if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete labors" }), { status: 403, headers: corsHeaders });
                     const id = url.searchParams.get('id');
                     
-                    // Force the delete by temporarily bypassing foreign key checks
+                    // Manually delete all dependent data to satisfy foreign key constraints
                     await env.DB.batch([
-                        env.DB.prepare('PRAGMA foreign_keys = OFF'),
-                        env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id),
-                        env.DB.prepare('PRAGMA foreign_keys = ON')
+                        env.DB.prepare('DELETE FROM labor_attendance WHERE labor_id = ?').bind(id),
+                        env.DB.prepare('DELETE FROM labor_salary_history WHERE labor_id = ?').bind(id),
+                        env.DB.prepare('DELETE FROM labor_weekly_adjustments WHERE labor_id = ?').bind(id),
+                        env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id)
                     ]);
                     
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
