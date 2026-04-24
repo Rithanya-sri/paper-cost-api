@@ -264,14 +264,32 @@ export default {
             if (path === '/api/attendance') {
                 if (method === 'GET') {
                     const date = url.searchParams.get('date');
-                    const results = await env.DB.prepare('SELECT a.*, l.name as labor_name FROM labor_attendance a JOIN labors l ON a.labor_id = l.id WHERE a.date = ?').bind(date).all();
-                    return new Response(JSON.stringify(results.results), { headers: corsHeaders });
+                    const startDate = url.searchParams.get('startDate');
+                    const endDate = url.searchParams.get('endDate');
+
+                    if (startDate && endDate) {
+                        const results = await env.DB.prepare(`
+                            SELECT a.*, l.name as labor_name 
+                            FROM labor_attendance a 
+                            JOIN labors l ON a.labor_id = l.id 
+                            WHERE a.date BETWEEN ? AND ?
+                        `).bind(startDate, endDate).all();
+                        return new Response(JSON.stringify(results.results), { headers: corsHeaders });
+                    } else {
+                        const results = await env.DB.prepare(`
+                            SELECT a.*, l.name as labor_name 
+                            FROM labor_attendance a 
+                            JOIN labors l ON a.labor_id = l.id 
+                            WHERE a.date = ?
+                        `).bind(date).all();
+                        return new Response(JSON.stringify(results.results), { headers: corsHeaders });
+                    }
                 }
                 if (method === 'POST') {
                     const data = await request.json() as any;
                     await env.DB.prepare('DELETE FROM labor_attendance WHERE date = ?').bind(data.date).run();
                     for (const item of data.items) {
-                        await env.DB.prepare('INSERT INTO labor_attendance (date, labor_id, shifts, salary_rate_at_time) VALUES (?, ?, ?, ?)').bind(data.date, item.labor_id, item.shifts, item.salary_rate_at_time).run();
+                        await env.DB.prepare('INSERT INTO labor_attendance (date, labor_id, shifts, salary_rate_at_time, work_location) VALUES (?, ?, ?, ?, ?)').bind(data.date, item.labor_id, item.shifts, item.salary_rate_at_time, item.work_location || 'Cones').run();
                     }
                     return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
                 }
