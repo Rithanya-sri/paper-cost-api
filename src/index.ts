@@ -1,5 +1,57 @@
+/// <reference types="@cloudflare/workers-types" />
+import * as jose from 'jose';
+
 export interface Env {
     DB: D1Database;
+}
+
+const FIREBASE_PROJECT_ID = "paper-cost-auth-v2";
+const GOOGLE_CERT_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+
+const OWNER_EMAILS = [
+    "goldconeserode@gmail.com",
+    "thangam44445@gmail.com",
+];
+
+const SUPERVISOR_EMAILS = [
+    "goldconesoffice@gmail.com",
+    "rithanya.sri04@gmail.com",
+    "goldconesae@gmail.com",
+];
+
+let publicKeys: Record<string, string> | null = null;
+let lastFetch = 0;
+
+async function getPublicKeys() {
+    const now = Date.now();
+    if (!publicKeys || now - lastFetch > 3600000) { // Cache for 1 hour
+        const res = await fetch(GOOGLE_CERT_URL);
+        publicKeys = await res.json() as Record<string, string>;
+        lastFetch = now;
+    }
+    return publicKeys;
+}
+
+async function verifyToken(token: string) {
+    try {
+        const header = jose.decodeProtectedHeader(token);
+        if (!header.kid) throw new Error("Missing kid");
+
+        const keys = await getPublicKeys();
+        const cert = keys[header.kid];
+        if (!cert) throw new Error("Invalid kid");
+
+        const publicKey = await jose.importX509(cert, 'RS256');
+        const { payload } = await jose.jwtVerify(token, publicKey, {
+            issuer: `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`,
+            audience: FIREBASE_PROJECT_ID,
+        });
+
+        return payload;
+    } catch (e) {
+        console.error("Token verification failed:", e);
+        return null;
+    }
 }
 
 export default {
@@ -14,7 +66,7 @@ export default {
                 headers: {
                     "Access-Control-Allow-Origin": "*",
                     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization",
                 },
             });
         }
@@ -24,9 +76,39 @@ export default {
             "Content-Type": "application/json",
         };
 
-        // Root path check
+        // Root path check - No auth needed for health check
         if (path === "/api/paper-cost" || path === "/") {
             return new Response(JSON.stringify({ success: true, message: "Paper cost API working ✅" }), {
+                headers: corsHeaders,
+            });
+        }
+
+        // Authentication Middleware
+        const authHeader = request.headers.get("Authorization");
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return new Response(JSON.stringify({ error: "Missing or invalid Authorization header" }), {
+                status: 401,
+                headers: corsHeaders,
+            });
+        }
+
+        const token = authHeader.split(" ")[1];
+        const payload = await verifyToken(token);
+
+        if (!payload || !payload.email) {
+            return new Response(JSON.stringify({ error: "Unauthorized" }), {
+                status: 403,
+                headers: corsHeaders,
+            });
+        }
+
+        const email = (payload.email as string).toLowerCase();
+        const isOwner = OWNER_EMAILS.includes(email);
+        const isSupervisor = SUPERVISOR_EMAILS.includes(email);
+
+        if (!isOwner && !isSupervisor) {
+            return new Response(JSON.stringify({ error: `Access Denied: ${email} is not authorized` }), {
+                status: 403,
                 headers: corsHeaders,
             });
         }
@@ -59,7 +141,8 @@ export default {
                 }
 
                 if (method === 'POST') {
-                    const data = await request.json();
+                    // Both roles can create (Supervisor submits, Owner can also create)
+                    const data = await request.json() as any;
                     const calculated = calculateRecord(data);
 
                     const result = await env.DB.prepare(`
@@ -119,7 +202,15 @@ export default {
                 }
 
                 if (method === 'PUT' && id) {
-                    const data = await request.json();
+                    // Only OWNER can update existing records
+                    if (!isOwner) {
+                        return new Response(JSON.stringify({ error: "Only owners can update records" }), {
+                            status: 403,
+                            headers: corsHeaders,
+                        });
+                    }
+
+                    const data = await request.json() as any;
                     const calculated = calculateRecord(data);
 
                     await env.DB.prepare(`
@@ -160,6 +251,14 @@ export default {
                 }
 
                 if (method === 'DELETE' && id) {
+                    // Only OWNER can delete
+                    if (!isOwner) {
+                        return new Response(JSON.stringify({ error: "Only owners can delete records" }), {
+                            status: 403,
+                            headers: corsHeaders,
+                        });
+                    }
+
                     await env.DB.prepare(
                         'DELETE FROM daily_production_records WHERE id = ?'
                     ).bind(id).run();
@@ -177,11 +276,19 @@ export default {
                     return new Response(JSON.stringify(result || {}), { headers: corsHeaders });
                 }
                 if (method === 'POST') {
-                    const data = await request.json();
+                    // Only OWNER can update market rates
+                    if (!isOwner) {
+                        return new Response(JSON.stringify({ error: "Only owners can update market rates" }), {
+                            status: 403,
+                            headers: corsHeaders,
+                        });
+                    }
+
+                    const data = await request.json() as any;
                     const result = await env.DB.prepare(`
                         INSERT INTO rate_master (
-                            paper_rate, paste_rate, outer_paste_rate, packing_rate, labour_wage, electricity_rate, eb_amount
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            paper_rate, paste_rate, outer_paste_rate, packing_rate, labour_wage, electricity_rate, eb_amount, waste_rate
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     `).bind(
                         data.paper_rate,
                         data.paste_rate,
@@ -189,7 +296,8 @@ export default {
                         data.packing_rate,
                         data.labour_wage,
                         data.electricity_rate || 0,
-                        data.eb_amount || 0
+                        data.eb_amount || 0,
+                        data.waste_rate || 0
                     ).run();
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), {
                         status: 201,
@@ -346,7 +454,10 @@ function calculateRecord(data: any) {
     const food_cost_per_tube = safeDivide(data.food_amount, production);
     const others_cost_per_tube = safeDivide(data.others_amount, production);
 
-    const waste_cost = round(data.waste_quantity_kg * data.waste_rate);
+    // 10. Waste Cost
+    const waste_quantity_kg = data.waste_quantity_kg || 0;
+    const waste_rate = data.waste_rate || 0;
+    const waste_cost = round(waste_quantity_kg * waste_rate);
     const waste_cost_per_tube = safeDivide(waste_cost, production);
 
     const grand_total_cost_per_tube = round(
@@ -386,6 +497,10 @@ function calculateRecord(data: any) {
         waste_cost,
         waste_cost_per_tube,
         electricity_rate: data.electricity_rate || 0,
+        waste_quantity_kg,
+        waste_rate,
+        waste_cost,
+        waste_cost_per_tube,
         grand_total_cost_per_tube,
     };
 }

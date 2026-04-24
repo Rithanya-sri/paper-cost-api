@@ -55,7 +55,13 @@ CREATE TABLE IF NOT EXISTS daily_production_records (
   
   -- 9. Others
   others_amount REAL NOT NULL DEFAULT 0,
-  
+
+  -- 10. Waste Cost
+  waste_quantity_kg REAL NOT NULL DEFAULT 0,
+  waste_rate REAL NOT NULL DEFAULT 0,
+  waste_cost REAL NOT NULL DEFAULT 0,
+  waste_cost_per_tube REAL NOT NULL DEFAULT 0,
+
   -- Grand Total
   grand_total_cost_per_tube REAL NOT NULL, -- Sum of all cost_per_tube values
   
@@ -79,6 +85,7 @@ CREATE TABLE IF NOT EXISTS rate_master (
   labour_wage REAL NOT NULL,  -- maps to avg_wage_per_day in requirements
   electricity_rate REAL NOT NULL DEFAULT 0,
   eb_amount REAL NOT NULL DEFAULT 0,
+  waste_rate REAL NOT NULL DEFAULT 0,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
