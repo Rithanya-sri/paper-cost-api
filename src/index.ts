@@ -141,13 +141,28 @@ export default {
                     const id = parseInt(idStr, 10);
                     
                     try {
-                        // Manually delete all dependent data sequentially to satisfy foreign key constraints and avoid D1 batch issues
+                        // Explicitly delete from all dependent tables first to avoid foreign key errors,
+                        // especially if ON DELETE CASCADE was NOT set up in the remote database schema.
+                        
+                        // 1. Delete Attendance records
                         await env.DB.prepare('DELETE FROM labor_attendance WHERE labor_id = ?').bind(id).run();
+                        
+                        // 2. Delete Salary History records
                         await env.DB.prepare('DELETE FROM labor_salary_history WHERE labor_id = ?').bind(id).run();
-                        await env.DB.prepare('DELETE FROM labor_weekly_adjustments WHERE labor_id = ?').bind(id).run();
+                        
+                        // 3. Delete Weekly Adjustments (try/catch in case table doesn't exist yet)
+                        try {
+                            await env.DB.prepare('DELETE FROM labor_weekly_adjustments WHERE labor_id = ?').bind(id).run();
+                        } catch (e) {
+                            console.warn("Table labor_weekly_adjustments might not exist", e);
+                        }
+                        
+                        // 4. Finally delete the labor record itself
                         await env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id).run();
+                        
                         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                     } catch (err: any) {
+                        console.error("Deletion error:", err);
                         return new Response(JSON.stringify({ error: "Failed to delete labor: " + err.message }), { status: 500, headers: corsHeaders });
                     }
                 }
