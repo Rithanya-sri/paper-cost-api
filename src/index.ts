@@ -295,6 +295,22 @@ export default {
                 }
             }
 
+            // Labor Adjustments (OT/Bonus)
+            if (path === '/api/labor-adjustments') {
+                if (method === 'GET') {
+                    const week_start_date = url.searchParams.get('week_start_date');
+                    const results = await env.DB.prepare('SELECT * FROM labor_weekly_adjustments WHERE week_start_date = ?').bind(week_start_date).all();
+                    return new Response(JSON.stringify(results.results), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any; // { week_start_date, adjustments: [{labor_id, amount}] }
+                    for (const adj of data.adjustments) {
+                        await env.DB.prepare('INSERT OR REPLACE INTO labor_weekly_adjustments (labor_id, week_start_date, amount) VALUES (?, ?, ?)').bind(adj.labor_id, data.week_start_date, adj.amount).run();
+                    }
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
             return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: corsHeaders });
 
         } catch (error: any) {
