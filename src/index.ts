@@ -11,7 +11,6 @@ const GOOGLE_CERT_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/secur
 const OWNER_EMAILS = [
     "goldconeserode@gmail.com",
     "thangam44445@gmail.com",
-    "goldconesoffice@gmail.com",
 ];
 
 const SUPERVISOR_EMAILS = [
@@ -202,14 +201,7 @@ export default {
                 }
 
                 if (method === 'PUT' && id) {
-                    // Only OWNER can update existing records
-                    if (!isOwner) {
-                        return new Response(JSON.stringify({ error: "Only owners can update records" }), {
-                            status: 403,
-                            headers: corsHeaders,
-                        });
-                    }
-
+                    // Both Owner and Supervisor can update records
                     const data = await request.json() as any;
                     const calculated = calculateRecord(data);
 
@@ -332,7 +324,7 @@ export default {
                         INSERT INTO labors (name, is_active) VALUES (?, ?)
                     `).bind(data.name, 1).run();
                     const laborId = result.meta.last_row_id;
-                    
+
                     // Part 2: Insert initial salary if provided
                     if (data.salary) {
                         await env.DB.prepare(`
@@ -377,7 +369,7 @@ export default {
                         FROM labor_attendance a
                         JOIN labors l ON a.labor_id = l.id
                         WHERE `;
-                    
+
                     let params = [];
                     if (date) {
                         query += `a.date = ?`;
@@ -386,24 +378,24 @@ export default {
                         query += `a.date BETWEEN ? AND ?`;
                         params.push(startDate, endDate);
                     }
-                    
+
                     const result = await env.DB.prepare(query).bind(...params).all();
                     return new Response(JSON.stringify(result.results), { headers: corsHeaders });
                 }
 
                 if (method === 'POST') {
                     const data = await request.json(); // { date: '...', items: [ {labor_id, shifts, salary_rate_at_time} ] }
-                    
+
                     // Delete existing for that date first (to overwrite)
                     await env.DB.prepare('DELETE FROM labor_attendance WHERE date = ?').bind(data.date).run();
-                    
+
                     for (const item of data.items) {
                         await env.DB.prepare(`
                             INSERT INTO labor_attendance (date, labor_id, shifts, salary_rate_at_time)
                             VALUES (?, ?, ?, ?)
                         `).bind(data.date, item.labor_id, item.shifts, item.salary_rate_at_time).run();
                     }
-                    
+
                     return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
                 }
             }
