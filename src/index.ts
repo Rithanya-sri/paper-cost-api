@@ -228,7 +228,7 @@ export default {
                 if (method === 'PUT') {
                     const id = url.pathname.split('/').pop();
                     if (!id || id === 'production') return new Response(JSON.stringify({ error: "Missing record ID" }), { status: 400, headers: corsHeaders });
-                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can update records" }), { status: 403, headers: corsHeaders });
+                    // supervisors are now allowed to update records to correct mistakes
                     const data = await request.json() as any;
                     const calculated = calculateRecord(data);
                     await env.DB.prepare(`
