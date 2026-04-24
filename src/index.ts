@@ -141,13 +141,11 @@ export default {
                     const id = parseInt(idStr, 10);
                     
                     try {
-                        // Manually delete all dependent data to satisfy foreign key constraints
-                        await env.DB.batch([
-                            env.DB.prepare('DELETE FROM labor_attendance WHERE labor_id = ?').bind(id),
-                            env.DB.prepare('DELETE FROM labor_salary_history WHERE labor_id = ?').bind(id),
-                            env.DB.prepare('DELETE FROM labor_weekly_adjustments WHERE labor_id = ?').bind(id),
-                            env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id)
-                        ]);
+                        // Manually delete all dependent data sequentially to satisfy foreign key constraints and avoid D1 batch issues
+                        await env.DB.prepare('DELETE FROM labor_attendance WHERE labor_id = ?').bind(id).run();
+                        await env.DB.prepare('DELETE FROM labor_salary_history WHERE labor_id = ?').bind(id).run();
+                        await env.DB.prepare('DELETE FROM labor_weekly_adjustments WHERE labor_id = ?').bind(id).run();
+                        await env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id).run();
                         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                     } catch (err: any) {
                         return new Response(JSON.stringify({ error: "Failed to delete labor: " + err.message }), { status: 500, headers: corsHeaders });
