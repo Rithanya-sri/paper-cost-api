@@ -147,7 +147,25 @@ export default {
                     
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
+                if (method === 'PUT') {
+                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can update labors" }), { status: 403, headers: corsHeaders });
+                    const parts = path.split("/").filter(Boolean);
+                    const id = parts[parts.length - 1];
+                    const data = await request.json() as any;
+                    
+                    if (data.action === 'update_salary') {
+                        await env.DB.prepare('INSERT INTO labor_salary_history (labor_id, salary, effective_date) VALUES (?, ?, ?)').bind(id, data.salary, data.effective_date || new Date().toISOString().split('T')[0]).run();
+                        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                    } else if (data.action === 'update_name') {
+                        await env.DB.prepare('UPDATE labors SET name = ? WHERE id = ?').bind(data.name, id).run();
+                        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                    }
+                }
             }
+
+            if (path.startsWith('/api/production')) {
+                const parts = path.split('/').filter(Boolean);
+                const id = parts.length > 2 ? parts[2] : null;
 
                 if (method === 'GET') {
                     if (id) {
