@@ -323,17 +323,42 @@ export default {
                 }
             }
 
-            // Labor Adjustments (OT/Bonus)
-            if (path === '/api/labor-adjustments') {
+            // Labor Payroll (Dynamic Carry-forward)
+            if (path === '/api/labor-payroll') {
                 if (method === 'GET') {
                     const week_start_date = url.searchParams.get('week_start_date');
-                    const results = await env.DB.prepare('SELECT * FROM labor_weekly_adjustments WHERE week_start_date = ?').bind(week_start_date).all();
-                    return new Response(JSON.stringify(results.results), { headers: corsHeaders });
+                    const results = await env.DB.prepare('SELECT * FROM labor_weekly_payroll WHERE week_start_date = ?').bind(week_start_date).all();
+                    
+                    // If no records for this week, we might want to fetch the previous week's balances to auto-fill.
+                    // We can just return the previous week's balances as a separate array to help the frontend.
+                    const prevDate = new Date(week_start_date!);
+                    prevDate.setDate(prevDate.getDate() - 7);
+                    const prev_week_start_date = prevDate.toISOString().split('T')[0];
+                    const prev_results = await env.DB.prepare('SELECT labor_id, balance_amount FROM labor_weekly_payroll WHERE week_start_date = ?').bind(prev_week_start_date).all();
+
+                    return new Response(JSON.stringify({
+                        current_week: results.results,
+                        previous_week: prev_results.results
+                    }), { headers: corsHeaders });
                 }
                 if (method === 'POST') {
-                    const data = await request.json() as any; // { week_start_date, adjustments: [{labor_id, amount}] }
-                    for (const adj of data.adjustments) {
-                        await env.DB.prepare('INSERT OR REPLACE INTO labor_weekly_adjustments (labor_id, week_start_date, amount) VALUES (?, ?, ?)').bind(adj.labor_id, data.week_start_date, adj.amount).run();
+                    const data = await request.json() as any; 
+                    // data: { week_start_date, payroll: [{labor_id, additional_amount, previous_balance, total_payable, paid_amount, balance_amount, paid_status}] }
+                    for (const p of data.payroll) {
+                        await env.DB.prepare(`
+                            INSERT OR REPLACE INTO labor_weekly_payroll 
+                            (labor_id, week_start_date, additional_amount, previous_balance, total_payable, paid_amount, balance_amount, paid_status, updated_at) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        `).bind(
+                            p.labor_id, 
+                            data.week_start_date, 
+                            p.additional_amount || 0,
+                            p.previous_balance || 0,
+                            p.total_payable || 0,
+                            p.paid_amount || 0,
+                            p.balance_amount || 0,
+                            p.paid_status || 'Unpaid'
+                        ).run();
                     }
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
