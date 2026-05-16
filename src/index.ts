@@ -315,6 +315,13 @@ export default {
                     const id = url.pathname.split('/').pop();
                     if (!id || id === 'production') return new Response(JSON.stringify({ error: "Missing record ID" }), { status: 400, headers: corsHeaders });
                     if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete records" }), { status: 403, headers: corsHeaders });
+                    
+                    // First get the date of the record to delete associated attendance
+                    const record = await env.DB.prepare('SELECT date FROM daily_production_records WHERE id = ?').bind(id).first() as any;
+                    if (record && record.date) {
+                        await env.DB.prepare('DELETE FROM labor_attendance WHERE date = ?').bind(record.date).run();
+                    }
+                    
                     await env.DB.prepare('DELETE FROM daily_production_records WHERE id = ?').bind(id).run();
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
