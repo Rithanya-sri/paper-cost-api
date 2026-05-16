@@ -1,4 +1,14 @@
--- Migration: Add new columns for rate persistence
-ALTER TABLE daily_production_records ADD COLUMN electricity_rate REAL NOT NULL DEFAULT 0;
-ALTER TABLE daily_production_records ADD COLUMN rate_snapshot_used_that_day INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE rate_master ADD COLUMN electricity_rate REAL NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS labor_weekly_payroll (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  labor_id INTEGER NOT NULL,
+  week_start_date TEXT NOT NULL,
+  additional_amount REAL DEFAULT 0,
+  previous_balance REAL DEFAULT 0,
+  total_payable REAL DEFAULT 0,
+  paid_amount REAL DEFAULT 0,
+  balance_amount REAL DEFAULT 0,
+  paid_status TEXT DEFAULT 'Unpaid',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(labor_id, week_start_date)
+);

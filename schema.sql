@@ -123,15 +123,18 @@ CREATE TABLE IF NOT EXISTS labor_attendance (
 -- Index for faster attendance lookups
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON labor_attendance(date);
 
--- 4. Labor Weekly Adjustments Table (For Additional Amounts/Bonuses)
-CREATE TABLE IF NOT EXISTS labor_weekly_adjustments (
+-- 4. Labor Weekly Payroll
+CREATE TABLE IF NOT EXISTS labor_weekly_payroll (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   labor_id INTEGER NOT NULL,
-  week_start_date TEXT NOT NULL, -- YYYY-MM-DD (typically Monday)
-  amount REAL NOT NULL DEFAULT 0,
+  week_start_date TEXT NOT NULL,
+  additional_amount REAL DEFAULT 0,
+  previous_balance REAL DEFAULT 0,
+  total_payable REAL DEFAULT 0,
+  paid_amount REAL DEFAULT 0,
+  balance_amount REAL DEFAULT 0,
+  paid_status TEXT DEFAULT 'Unpaid',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (labor_id) REFERENCES labors(id) ON DELETE CASCADE,
   UNIQUE(labor_id, week_start_date)
 );
-
