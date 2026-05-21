@@ -7,3 +7,12 @@ binding = "DB"
 database_name = "paper_cost_db"
 database_id = "0f2f3005-1aaa-494a-997b-fde3d05ca605"
 
+[env.develop]
+name = "paper-cost-api-develop"
+
+[[env.develop.d1_databases]]
+binding = "DB"
+database_name = "paper_cost_db_develop"
+database_id = "f06ae1da-0975-4d1c-b5a2-b88091206056"
+
+
