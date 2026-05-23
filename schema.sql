@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS daily_paper_usage (
   used_stock_today REAL NOT NULL,
   balance_stock REAL NOT NULL,
   reels_count INTEGER NOT NULL DEFAULT 0,
+  price REAL NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (paper_variety_id) REFERENCES paper_varieties(id) ON DELETE CASCADE,

@@ -430,9 +430,9 @@ export default {
                         batchStatements.push(
                             env.DB.prepare(`
                                 INSERT INTO daily_paper_usage 
-                                (date, paper_variety_id, current_stock, used_stock_today, balance_stock, reels_count) 
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            `).bind(date, u.paper_variety_id, u.current_stock || 0, u.used_stock_today || 0, u.balance_stock || 0, u.reels_count || 0)
+                                (date, paper_variety_id, current_stock, used_stock_today, balance_stock, reels_count, price) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            `).bind(date, u.paper_variety_id, u.current_stock || 0, u.used_stock_today || 0, u.balance_stock || 0, u.reels_count || 0, u.price || 0)
                         );
 
                         // Update current_stock in paper_varieties table permanently
@@ -482,8 +482,8 @@ function calculateRecord(data: any) {
     const safeDivide = (num: number, den: number) => { if (den === 0) return 0; return Math.round((num / den) * 100) / 100; };
     const round = (num: number) => Math.round(num * 100) / 100;
 
-    const paper_cost = round(data.paper_quantity_kg * data.paper_rate);
-    const paper_cost_per_tube = safeDivide(paper_cost, production);
+    const paper_cost = data.paper_cost !== undefined ? round(data.paper_cost) : round(data.paper_quantity_kg * data.paper_rate);
+    const paper_cost_per_tube = data.paper_cost_per_tube !== undefined ? round(data.paper_cost_per_tube) : safeDivide(paper_cost, production);
     const paste_cost = round(data.paste_quantity * data.paste_rate);
     const paste_cost_per_tube = safeDivide(paste_cost, production);
     const outer_paste_cost = round(data.outer_paste_quantity * data.outer_paste_rate);
@@ -499,7 +499,9 @@ function calculateRecord(data: any) {
     const waste_cost = round((data.waste_quantity_kg || 0) * (data.waste_rate || 0));
     const waste_cost_per_tube = safeDivide(waste_cost, production);
 
-    const grand_total_cost_per_tube = round(paper_cost_per_tube + paste_cost_per_tube + outer_paste_cost_per_tube + packing_cost_per_tube + labour_cost_per_tube + eb_cost_per_tube + overheads_cost_per_tube + food_cost_per_tube + others_cost_per_tube + waste_cost_per_tube);
+    const grand_total_cost_per_tube = data.grand_total_cost_per_tube !== undefined 
+        ? round(data.grand_total_cost_per_tube) 
+        : round(paper_cost_per_tube + paste_cost_per_tube + outer_paste_cost_per_tube + packing_cost_per_tube + labour_cost_per_tube + eb_cost_per_tube + overheads_cost_per_tube + food_cost_per_tube + others_cost_per_tube + waste_cost_per_tube);
 
     return { ...data, paper_cost, paper_cost_per_tube, paste_cost, paste_cost_per_tube, outer_paste_cost, outer_paste_cost_per_tube, packing_cost, packing_cost_per_tube, labour_cost, labour_cost_per_tube, eb_cost_per_tube, overheads_amount: data.overheads_amount || 0, overheads_cost_per_tube, food_amount: data.food_amount || 0, food_cost_per_tube, others_amount: data.others_amount || 0, others_cost_per_tube, waste_quantity_kg: data.waste_quantity_kg || 0, waste_rate: data.waste_rate || 0, waste_cost, waste_cost_per_tube, grand_total_cost_per_tube };
 }
