@@ -139,3 +139,46 @@ CREATE TABLE IF NOT EXISTS labor_weekly_payroll (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(labor_id, week_start_date)
 );
+
+-- 5. Paper Varieties
+CREATE TABLE IF NOT EXISTS paper_varieties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  current_stock REAL NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6. Daily Paper Stock Usage
+CREATE TABLE IF NOT EXISTS daily_paper_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  paper_variety_id INTEGER NOT NULL,
+  current_stock REAL NOT NULL,
+  used_stock_today REAL NOT NULL,
+  balance_stock REAL NOT NULL,
+  reels_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (paper_variety_id) REFERENCES paper_varieties(id) ON DELETE CASCADE,
+  UNIQUE(date, paper_variety_id)
+);
+
+-- 7. Reel-by-Reel Usage details
+CREATE TABLE IF NOT EXISTS reel_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  paper_variety_id INTEGER NOT NULL,
+  reel_index INTEGER NOT NULL,
+  weight REAL NOT NULL,
+  production REAL NOT NULL,
+  avg_pattern_weight REAL NOT NULL,
+  cone_weight REAL NOT NULL,
+  crushing_strength REAL NOT NULL,
+  description TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (paper_variety_id) REFERENCES paper_varieties(id) ON DELETE CASCADE,
+  UNIQUE(date, paper_variety_id, reel_index)
+);
+

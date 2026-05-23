@@ -223,7 +223,9 @@ export default {
                 }
 
                 if (method === 'PUT' && id) {
-                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can update records" }), { status: 403, headers: corsHeaders });
+                    if (!isOwner && !isSupervisor) {
+                        return new Response(JSON.stringify({ error: "Only owners and supervisors can update records" }), { status: 403, headers: corsHeaders });
+                    }
                     const data = await request.json() as any;
                     const calculated = calculateRecord(data);
                     await env.DB.prepare(`
@@ -368,6 +370,102 @@ export default {
                         ).run();
                     }
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
+            // Paper Varieties CRUD
+            if (path.startsWith('/api/paper-varieties')) {
+                const parts = path.split("/").filter(Boolean);
+                const id = parts.length > 2 ? parts[2] : null;
+
+                if (method === 'GET') {
+                    const result = await env.DB.prepare('SELECT * FROM paper_varieties ORDER BY name ASC').all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    const result = await env.DB.prepare('INSERT INTO paper_varieties (name, current_stock) VALUES (?, ?)')
+                        .bind(data.name, data.current_stock || 0)
+                        .run();
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+                if (method === 'PUT' && id) {
+                    const data = await request.json() as any;
+                    await env.DB.prepare('UPDATE paper_varieties SET name = ?, current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        .bind(data.name, data.current_stock || 0, id)
+                        .run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+                if (method === 'DELETE' && id) {
+                    await env.DB.prepare('DELETE FROM paper_varieties WHERE id = ?').bind(id).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
+            // Paper Usage (per date)
+            if (path === '/api/paper-usage') {
+                if (method === 'GET') {
+                    const date = url.searchParams.get('date');
+                    if (!date) return new Response(JSON.stringify({ error: "Missing date" }), { status: 400, headers: corsHeaders });
+                    
+                    const usages = await env.DB.prepare('SELECT * FROM daily_paper_usage WHERE date = ?').bind(date).all();
+                    const reels = await env.DB.prepare('SELECT * FROM reel_usage WHERE date = ?').bind(date).all();
+                    
+                    return new Response(JSON.stringify({
+                        usages: usages.results,
+                        reels: reels.results
+                    }), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    const date = data.date;
+                    if (!date) return new Response(JSON.stringify({ error: "Missing date" }), { status: 400, headers: corsHeaders });
+
+                    const batchStatements = [
+                        env.DB.prepare('DELETE FROM daily_paper_usage WHERE date = ?').bind(date),
+                        env.DB.prepare('DELETE FROM reel_usage WHERE date = ?').bind(date)
+                    ];
+
+                    for (const u of data.usages) {
+                        batchStatements.push(
+                            env.DB.prepare(`
+                                INSERT INTO daily_paper_usage 
+                                (date, paper_variety_id, current_stock, used_stock_today, balance_stock, reels_count) 
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            `).bind(date, u.paper_variety_id, u.current_stock || 0, u.used_stock_today || 0, u.balance_stock || 0, u.reels_count || 0)
+                        );
+
+                        // Update current_stock in paper_varieties table permanently
+                        batchStatements.push(
+                            env.DB.prepare('UPDATE paper_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                                .bind(u.balance_stock || 0, u.paper_variety_id)
+                        );
+
+                        if (u.reels && Array.isArray(u.reels)) {
+                            for (const r of u.reels) {
+                                batchStatements.push(
+                                    env.DB.prepare(`
+                                        INSERT INTO reel_usage 
+                                        (date, paper_variety_id, reel_index, weight, production, avg_pattern_weight, cone_weight, crushing_strength, description) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    `).bind(
+                                        date, 
+                                        u.paper_variety_id, 
+                                        r.reel_index, 
+                                        r.weight || 0, 
+                                        r.production || 0, 
+                                        r.avg_pattern_weight || 0, 
+                                        r.cone_weight || 0, 
+                                        r.crushing_strength || 0, 
+                                        r.description || ""
+                                    )
+                                );
+                            }
+                        }
+                    }
+
+                    await env.DB.batch(batchStatements);
+                    return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
                 }
             }
 
