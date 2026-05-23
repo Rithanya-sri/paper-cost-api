@@ -120,13 +120,7 @@ export default {
                 if (method === 'GET') {
                     const date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
                     const result = await env.DB.prepare(`
-                        SELECT l.*, (
-                            SELECT COALESCE(
-                                (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND effective_date <= ? AND salary > 0 ORDER BY effective_date DESC, created_at DESC LIMIT 1),
-                                (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND salary > 0 ORDER BY effective_date DESC, created_at DESC LIMIT 1),
-                                0
-                            )
-                        ) as current_salary
+                        SELECT l.*, (SELECT salary FROM labor_salary_history WHERE labor_id = l.id AND effective_date <= ? ORDER BY effective_date DESC, created_at DESC LIMIT 1) as current_salary
                         FROM labors l 
                         WHERE l.is_active = 1
                         ORDER BY l.name ASC
@@ -142,56 +136,15 @@ export default {
                 }
                 if (method === 'DELETE') {
                     if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete labors" }), { status: 403, headers: corsHeaders });
-                    const idStr = url.searchParams.get('id');
-                    if (!idStr) return new Response(JSON.stringify({ error: "Missing labor ID" }), { status: 400, headers: corsHeaders });
-                    const id = parseInt(idStr, 10);
+                    const id = url.searchParams.get('id');
                     
-                    try {
-                        // Explicitly delete from all dependent tables first to avoid foreign key errors,
-                        // especially if ON DELETE CASCADE was NOT set up in the remote database schema.
-                        
-                        // 1. Delete Attendance records
-                        await env.DB.prepare('DELETE FROM labor_attendance WHERE labor_id = ?').bind(id).run();
-                        
-                        // 2. Delete Salary History records
-                        await env.DB.prepare('DELETE FROM labor_salary_history WHERE labor_id = ?').bind(id).run();
-                        
-                        // 3. Delete Weekly Adjustments (try/catch in case table doesn't exist yet)
-                        try {
-                            await env.DB.prepare('DELETE FROM labor_weekly_adjustments WHERE labor_id = ?').bind(id).run();
-                        } catch (e) {
-                            console.warn("Table labor_weekly_adjustments might not exist", e);
-                        }
-                        
-                        // 4. Finally delete the labor record itself
-                        await env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id).run();
-                        
-                        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
-                    } catch (err: any) {
-                        console.error("Deletion error:", err);
-                        return new Response(JSON.stringify({ error: "Failed to delete labor: " + err.message }), { status: 500, headers: corsHeaders });
-                    }
-                }
-                if (method === 'PUT') {
-                    if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can update labors" }), { status: 403, headers: corsHeaders });
-                    const id = url.pathname.split('/').pop();
-                    const data = await request.json() as any;
+                    // Force the delete by temporarily bypassing foreign key checks
+                    await env.DB.batch([
+                        env.DB.prepare('PRAGMA foreign_keys = OFF'),
+                        env.DB.prepare('DELETE FROM labors WHERE id = ?').bind(id),
+                        env.DB.prepare('PRAGMA foreign_keys = ON')
+                    ]);
                     
-                    // Support both naming conventions
-                    const salary = data.current_salary ?? data.salary ?? null;
-                    
-                    await env.DB.prepare(`
-                        UPDATE labors 
-                        SET name = COALESCE(?, name), 
-                            is_active = COALESCE(?, is_active) 
-                        WHERE id = ?
-                    `).bind(data.name ?? null, data.is_active ?? null, id).run();
-
-                    // If salary is provided, also insert into history
-                    if (salary !== null) {
-                        await env.DB.prepare('INSERT INTO labor_salary_history (labor_id, salary, effective_date) VALUES (?, ?, ?)').bind(id, salary, data.effective_date || new Date().toISOString().split('T')[0]).run();
-                    }
-
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
                 if (method === 'PUT') {
@@ -269,10 +222,10 @@ export default {
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id, ...calculated }), { status: 201, headers: corsHeaders });
                 }
 
-                if (method === 'PUT') {
-                    const id = url.pathname.split('/').pop();
-                    if (!id || id === 'production') return new Response(JSON.stringify({ error: "Missing record ID" }), { status: 400, headers: corsHeaders });
-                    // supervisors are now allowed to update records to correct mistakes
+                if (method === 'PUT' && id) {
+                    if (!isOwner && !isSupervisor) {
+                        return new Response(JSON.stringify({ error: "Only owners and supervisors can update records" }), { status: 403, headers: corsHeaders });
+                    }
                     const data = await request.json() as any;
                     const calculated = calculateRecord(data);
                     await env.DB.prepare(`
@@ -311,9 +264,7 @@ export default {
                     return new Response(JSON.stringify({ success: true, ...calculated }), { headers: corsHeaders });
                 }
 
-                if (method === 'DELETE') {
-                    const id = url.pathname.split('/').pop();
-                    if (!id || id === 'production') return new Response(JSON.stringify({ error: "Missing record ID" }), { status: 400, headers: corsHeaders });
+                if (method === 'DELETE' && id) {
                     if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can delete records" }), { status: 403, headers: corsHeaders });
                     
                     // First get the date of the record to delete associated attendance
@@ -422,6 +373,102 @@ export default {
                 }
             }
 
+            // Paper Varieties CRUD
+            if (path.startsWith('/api/paper-varieties')) {
+                const parts = path.split("/").filter(Boolean);
+                const id = parts.length > 2 ? parts[2] : null;
+
+                if (method === 'GET') {
+                    const result = await env.DB.prepare('SELECT * FROM paper_varieties ORDER BY name ASC').all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    const result = await env.DB.prepare('INSERT INTO paper_varieties (name, current_stock) VALUES (?, ?)')
+                        .bind(data.name, data.current_stock || 0)
+                        .run();
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+                if (method === 'PUT' && id) {
+                    const data = await request.json() as any;
+                    await env.DB.prepare('UPDATE paper_varieties SET name = ?, current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        .bind(data.name, data.current_stock || 0, id)
+                        .run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+                if (method === 'DELETE' && id) {
+                    await env.DB.prepare('DELETE FROM paper_varieties WHERE id = ?').bind(id).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
+            // Paper Usage (per date)
+            if (path === '/api/paper-usage') {
+                if (method === 'GET') {
+                    const date = url.searchParams.get('date');
+                    if (!date) return new Response(JSON.stringify({ error: "Missing date" }), { status: 400, headers: corsHeaders });
+                    
+                    const usages = await env.DB.prepare('SELECT * FROM daily_paper_usage WHERE date = ?').bind(date).all();
+                    const reels = await env.DB.prepare('SELECT * FROM reel_usage WHERE date = ?').bind(date).all();
+                    
+                    return new Response(JSON.stringify({
+                        usages: usages.results,
+                        reels: reels.results
+                    }), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    const date = data.date;
+                    if (!date) return new Response(JSON.stringify({ error: "Missing date" }), { status: 400, headers: corsHeaders });
+
+                    const batchStatements = [
+                        env.DB.prepare('DELETE FROM daily_paper_usage WHERE date = ?').bind(date),
+                        env.DB.prepare('DELETE FROM reel_usage WHERE date = ?').bind(date)
+                    ];
+
+                    for (const u of data.usages) {
+                        batchStatements.push(
+                            env.DB.prepare(`
+                                INSERT INTO daily_paper_usage 
+                                (date, paper_variety_id, current_stock, used_stock_today, balance_stock, reels_count, price) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            `).bind(date, u.paper_variety_id, u.current_stock || 0, u.used_stock_today || 0, u.balance_stock || 0, u.reels_count || 0, u.price || 0)
+                        );
+
+                        // Update current_stock in paper_varieties table permanently
+                        batchStatements.push(
+                            env.DB.prepare('UPDATE paper_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                                .bind(u.balance_stock || 0, u.paper_variety_id)
+                        );
+
+                        if (u.reels && Array.isArray(u.reels)) {
+                            for (const r of u.reels) {
+                                batchStatements.push(
+                                    env.DB.prepare(`
+                                        INSERT INTO reel_usage 
+                                        (date, paper_variety_id, reel_index, weight, production, avg_pattern_weight, cone_weight, crushing_strength, description) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    `).bind(
+                                        date, 
+                                        u.paper_variety_id, 
+                                        r.reel_index, 
+                                        r.weight || 0, 
+                                        r.production || 0, 
+                                        r.avg_pattern_weight || 0, 
+                                        r.cone_weight || 0, 
+                                        r.crushing_strength || 0, 
+                                        r.description || ""
+                                    )
+                                );
+                            }
+                        }
+                    }
+
+                    await env.DB.batch(batchStatements);
+                    return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
+                }
+            }
+
             return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: corsHeaders });
 
         } catch (error: any) {
@@ -435,8 +482,8 @@ function calculateRecord(data: any) {
     const safeDivide = (num: number, den: number) => { if (den === 0) return 0; return Math.round((num / den) * 100) / 100; };
     const round = (num: number) => Math.round(num * 100) / 100;
 
-    const paper_cost = round(data.paper_quantity_kg * data.paper_rate);
-    const paper_cost_per_tube = safeDivide(paper_cost, production);
+    const paper_cost = data.paper_cost !== undefined ? round(data.paper_cost) : round(data.paper_quantity_kg * data.paper_rate);
+    const paper_cost_per_tube = data.paper_cost_per_tube !== undefined ? round(data.paper_cost_per_tube) : safeDivide(paper_cost, production);
     const paste_cost = round(data.paste_quantity * data.paste_rate);
     const paste_cost_per_tube = safeDivide(paste_cost, production);
     const outer_paste_cost = round(data.outer_paste_quantity * data.outer_paste_rate);
@@ -452,7 +499,9 @@ function calculateRecord(data: any) {
     const waste_cost = round((data.waste_quantity_kg || 0) * (data.waste_rate || 0));
     const waste_cost_per_tube = safeDivide(waste_cost, production);
 
-    const grand_total_cost_per_tube = round(paper_cost_per_tube + paste_cost_per_tube + outer_paste_cost_per_tube + packing_cost_per_tube + labour_cost_per_tube + eb_cost_per_tube + overheads_cost_per_tube + food_cost_per_tube + others_cost_per_tube + waste_cost_per_tube);
+    const grand_total_cost_per_tube = data.grand_total_cost_per_tube !== undefined 
+        ? round(data.grand_total_cost_per_tube) 
+        : round(paper_cost_per_tube + paste_cost_per_tube + outer_paste_cost_per_tube + packing_cost_per_tube + labour_cost_per_tube + eb_cost_per_tube + overheads_cost_per_tube + food_cost_per_tube + others_cost_per_tube + waste_cost_per_tube);
 
     return { ...data, paper_cost, paper_cost_per_tube, paste_cost, paste_cost_per_tube, outer_paste_cost, outer_paste_cost_per_tube, packing_cost, packing_cost_per_tube, labour_cost, labour_cost_per_tube, eb_cost_per_tube, overheads_amount: data.overheads_amount || 0, overheads_cost_per_tube, food_amount: data.food_amount || 0, food_cost_per_tube, others_amount: data.others_amount || 0, others_cost_per_tube, waste_quantity_kg: data.waste_quantity_kg || 0, waste_rate: data.waste_rate || 0, waste_cost, waste_cost_per_tube, grand_total_cost_per_tube };
 }
