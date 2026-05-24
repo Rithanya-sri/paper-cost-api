@@ -199,9 +199,10 @@ export default {
                             others_amount,
                             waste_quantity_kg, waste_rate, waste_cost, waste_cost_per_tube,
                             grand_total_cost_per_tube,
-                            rate_snapshot_used_that_day
+                            rate_snapshot_used_that_day,
+                            shift_production
                         ) VALUES (
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                     `).bind(
                         calculated.date, calculated.production, calculated.outdone,
@@ -216,7 +217,8 @@ export default {
                         calculated.others_amount || 0,
                         calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
-                        calculated.rate_snapshot_used_that_day || 0
+                        calculated.rate_snapshot_used_that_day || 0,
+                        calculated.shift_production || null
                     ).run();
 
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id, ...calculated }), { status: 201, headers: corsHeaders });
@@ -243,6 +245,7 @@ export default {
                             waste_quantity_kg = ?, waste_rate = ?, waste_cost = ?, waste_cost_per_tube = ?,
                             grand_total_cost_per_tube = ?,
                             rate_snapshot_used_that_day = ?,
+                            shift_production = ?,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     `).bind(
@@ -259,6 +262,7 @@ export default {
                         calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0,
+                        calculated.shift_production || null,
                         id
                     ).run();
                     return new Response(JSON.stringify({ success: true, ...calculated }), { headers: corsHeaders });
