@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS daily_production_records (
   -- Flag to lock old records from auto-updating
   rate_snapshot_used_that_day INTEGER NOT NULL DEFAULT 0,
   
+  -- Shift-wise production (serialized JSON)
+  shift_production TEXT,
+  
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
