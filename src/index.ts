@@ -200,9 +200,10 @@ export default {
                             waste_quantity_kg, waste_rate, waste_cost, waste_cost_per_tube,
                             grand_total_cost_per_tube,
                             rate_snapshot_used_that_day,
-                            shift_production
+                            shift_production,
+                            machine_production
                         ) VALUES (
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                     `).bind(
                         calculated.date, calculated.production, calculated.outdone,
@@ -218,7 +219,8 @@ export default {
                         calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0,
-                        calculated.shift_production || null
+                        calculated.shift_production || null,
+                        calculated.machine_production || null
                     ).run();
 
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id, ...calculated }), { status: 201, headers: corsHeaders });
@@ -246,6 +248,7 @@ export default {
                             grand_total_cost_per_tube = ?,
                             rate_snapshot_used_that_day = ?,
                             shift_production = ?,
+                            machine_production = ?,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     `).bind(
@@ -263,6 +266,7 @@ export default {
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0,
                         calculated.shift_production || null,
+                        calculated.machine_production || null,
                         id
                     ).run();
                     return new Response(JSON.stringify({ success: true, ...calculated }), { headers: corsHeaders });

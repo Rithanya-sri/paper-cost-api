@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS daily_production_records (
   -- Shift-wise production (serialized JSON)
   shift_production TEXT,
   
+  -- Machine-wise production (serialized JSON)
+  machine_production TEXT,
+  
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
