@@ -17,6 +17,7 @@ const SUPERVISOR_EMAILS = [
     "goldconesoffice@gmail.com",
     "rithanya.sri04@gmail.com",
     "goldconesae@gmail.com",
+    "goldconespse@gmail.com",
 ];
 
 let publicKeys: Record<string, string> | null = null;
