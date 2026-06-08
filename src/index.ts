@@ -199,12 +199,13 @@ export default {
                             food_amount, food_cost_per_tube,
                             others_amount,
                             waste_quantity_kg, waste_rate, waste_cost, waste_cost_per_tube,
+                            wood_cost, wood_cost_per_tube,
                             grand_total_cost_per_tube,
                             rate_snapshot_used_that_day,
                             shift_production,
                             machine_production
                         ) VALUES (
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                     `).bind(
                         calculated.date, calculated.production, calculated.outdone,
@@ -218,6 +219,7 @@ export default {
                         calculated.food_amount, calculated.food_cost_per_tube,
                         calculated.others_amount || 0,
                         calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
+                        calculated.wood_cost || 0, calculated.wood_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0,
                         calculated.shift_production || null,
@@ -246,6 +248,7 @@ export default {
                             food_amount = ?, food_cost_per_tube = ?,
                             others_amount = ?,
                             waste_quantity_kg = ?, waste_rate = ?, waste_cost = ?, waste_cost_per_tube = ?,
+                            wood_cost = ?, wood_cost_per_tube = ?,
                             grand_total_cost_per_tube = ?,
                             rate_snapshot_used_that_day = ?,
                             shift_production = ?,
@@ -264,6 +267,7 @@ export default {
                         calculated.food_amount, calculated.food_cost_per_tube,
                         calculated.others_amount || 0,
                         calculated.waste_quantity_kg || 0, calculated.waste_rate || 0, calculated.waste_cost || 0, calculated.waste_cost_per_tube || 0,
+                        calculated.wood_cost || 0, calculated.wood_cost_per_tube || 0,
                         calculated.grand_total_cost_per_tube,
                         calculated.rate_snapshot_used_that_day || 0,
                         calculated.shift_production || null,
@@ -549,6 +553,75 @@ export default {
                 }
             }
 
+            // Wood Varieties
+            if (path === '/api/wood-varieties') {
+                if (method === 'GET') {
+                    const varieties = await env.DB.prepare('SELECT * FROM wood_varieties ORDER BY name ASC').all();
+                    return new Response(JSON.stringify(varieties.results), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    if (!data.name) return new Response(JSON.stringify({ error: 'Name is required' }), { status: 400, headers: corsHeaders });
+                    const result = await env.DB.prepare('INSERT INTO wood_varieties (name, current_stock) VALUES (?, ?)')
+                        .bind(data.name, data.current_stock || 0)
+                        .run();
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+                if (method === 'PUT' && id) {
+                    const data = await request.json() as any;
+                    await env.DB.prepare('UPDATE wood_varieties SET name = ?, current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        .bind(data.name, data.current_stock || 0, id)
+                        .run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+                if (method === 'DELETE' && id) {
+                    await env.DB.prepare('DELETE FROM wood_varieties WHERE id = ?').bind(id).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
+            // Wood Usage (per date)
+            if (path === '/api/wood-usage') {
+                if (method === 'GET') {
+                    const date = url.searchParams.get('date');
+                    if (!date) return new Response(JSON.stringify({ error: "Missing date" }), { status: 400, headers: corsHeaders });
+                    
+                    const usages = await env.DB.prepare('SELECT * FROM daily_wood_usage WHERE date = ?').bind(date).all();
+                    
+                    return new Response(JSON.stringify({
+                        usages: usages.results
+                    }), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    const date = data.date;
+                    if (!date) return new Response(JSON.stringify({ error: "Missing date" }), { status: 400, headers: corsHeaders });
+
+                    const batchStatements = [
+                        env.DB.prepare('DELETE FROM daily_wood_usage WHERE date = ?').bind(date)
+                    ];
+
+                    for (const u of data.usages) {
+                        batchStatements.push(
+                            env.DB.prepare(`
+                                INSERT INTO daily_wood_usage 
+                                (date, wood_variety_id, current_stock, used_stock_today, balance_stock, price) 
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            `).bind(date, u.wood_variety_id, u.current_stock || 0, u.used_stock_today || 0, u.balance_stock || 0, u.price || 0)
+                        );
+
+                        // Update current_stock in wood_varieties table permanently
+                        batchStatements.push(
+                            env.DB.prepare('UPDATE wood_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                                .bind(u.balance_stock || 0, u.wood_variety_id)
+                        );
+                    }
+
+                    await env.DB.batch(batchStatements);
+                    return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
+                }
+            }
+
             return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: corsHeaders });
 
         } catch (error: any) {
@@ -579,9 +652,12 @@ function calculateRecord(data: any) {
     const waste_cost = round((data.waste_quantity_kg || 0) * (data.waste_rate || 0));
     const waste_cost_per_tube = safeDivide(waste_cost, production);
 
+    const wood_cost = data.wood_cost !== undefined ? round(data.wood_cost) : 0;
+    const wood_cost_per_tube = data.wood_cost_per_tube !== undefined ? round(data.wood_cost_per_tube) : safeDivide(wood_cost, production);
+
     const grand_total_cost_per_tube = data.grand_total_cost_per_tube !== undefined 
         ? round(data.grand_total_cost_per_tube) 
-        : round(paper_cost_per_tube + paste_cost_per_tube + outer_paste_cost_per_tube + packing_cost_per_tube + labour_cost_per_tube + eb_cost_per_tube + overheads_cost_per_tube + food_cost_per_tube + others_cost_per_tube + waste_cost_per_tube);
+        : round(paper_cost_per_tube + paste_cost_per_tube + outer_paste_cost_per_tube + packing_cost_per_tube + labour_cost_per_tube + eb_cost_per_tube + overheads_cost_per_tube + food_cost_per_tube + others_cost_per_tube + waste_cost_per_tube + wood_cost_per_tube);
 
-    return { ...data, paper_cost, paper_cost_per_tube, paste_cost, paste_cost_per_tube, outer_paste_cost, outer_paste_cost_per_tube, packing_cost, packing_cost_per_tube, labour_cost, labour_cost_per_tube, eb_cost_per_tube, overheads_amount: data.overheads_amount || 0, overheads_cost_per_tube, food_amount: data.food_amount || 0, food_cost_per_tube, others_amount: data.others_amount || 0, others_cost_per_tube, waste_quantity_kg: data.waste_quantity_kg || 0, waste_rate: data.waste_rate || 0, waste_cost, waste_cost_per_tube, grand_total_cost_per_tube };
+    return { ...data, paper_cost, paper_cost_per_tube, paste_cost, paste_cost_per_tube, outer_paste_cost, outer_paste_cost_per_tube, packing_cost, packing_cost_per_tube, labour_cost, labour_cost_per_tube, eb_cost_per_tube, overheads_amount: data.overheads_amount || 0, overheads_cost_per_tube, food_amount: data.food_amount || 0, food_cost_per_tube, others_amount: data.others_amount || 0, others_cost_per_tube, waste_quantity_kg: data.waste_quantity_kg || 0, waste_rate: data.waste_rate || 0, waste_cost, waste_cost_per_tube, wood_cost, wood_cost_per_tube, grand_total_cost_per_tube };
 }
