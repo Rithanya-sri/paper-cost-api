@@ -554,7 +554,10 @@ export default {
             }
 
             // Wood Varieties
-            if (path === '/api/wood-varieties') {
+            if (path.startsWith('/api/wood-varieties')) {
+                const parts = path.split('/');
+                const id = parts.length > 2 ? parts[parts.length - 1] : null;
+
                 if (method === 'GET') {
                     const varieties = await env.DB.prepare('SELECT * FROM wood_varieties ORDER BY name ASC').all();
                     return new Response(JSON.stringify(varieties.results), { headers: corsHeaders });
