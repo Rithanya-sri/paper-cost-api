@@ -478,6 +478,77 @@ export default {
                 }
             }
 
+            // Paste Varieties CRUD
+            if (path.startsWith('/api/paste-varieties')) {
+                const parts = path.split("/").filter(Boolean);
+                const id = parts.length > 2 ? parts[2] : null;
+
+                if (method === 'GET') {
+                    const result = await env.DB.prepare('SELECT * FROM paste_varieties ORDER BY name ASC').all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    const result = await env.DB.prepare('INSERT INTO paste_varieties (name, current_stock) VALUES (?, ?)')
+                        .bind(data.name, data.current_stock || 0)
+                        .run();
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+                if (method === 'PUT' && id) {
+                    const data = await request.json() as any;
+                    await env.DB.prepare('UPDATE paste_varieties SET name = ?, current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        .bind(data.name, data.current_stock || 0, id)
+                        .run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+                if (method === 'DELETE' && id) {
+                    await env.DB.prepare('DELETE FROM paste_varieties WHERE id = ?').bind(id).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
+            // Paste Usage (per date)
+            if (path === '/api/paste-usage') {
+                if (method === 'GET') {
+                    const date = url.searchParams.get('date');
+                    if (!date) return new Response(JSON.stringify({ error: "Missing date" }), { status: 400, headers: corsHeaders });
+                    
+                    const usages = await env.DB.prepare('SELECT * FROM daily_paste_usage WHERE date = ?').bind(date).all();
+                    
+                    return new Response(JSON.stringify({
+                        usages: usages.results
+                    }), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    const date = data.date;
+                    if (!date) return new Response(JSON.stringify({ error: "Missing date" }), { status: 400, headers: corsHeaders });
+
+                    const batchStatements = [
+                        env.DB.prepare('DELETE FROM daily_paste_usage WHERE date = ?').bind(date)
+                    ];
+
+                    for (const u of data.usages) {
+                        batchStatements.push(
+                            env.DB.prepare(`
+                                INSERT INTO daily_paste_usage 
+                                (date, paste_variety_id, current_stock, used_stock_today, balance_stock, price) 
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            `).bind(date, u.paste_variety_id, u.current_stock || 0, u.used_stock_today || 0, u.balance_stock || 0, u.price || 0)
+                        );
+
+                        // Update current_stock in paste_varieties table permanently
+                        batchStatements.push(
+                            env.DB.prepare('UPDATE paste_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                                .bind(u.balance_stock || 0, u.paste_variety_id)
+                        );
+                    }
+
+                    await env.DB.batch(batchStatements);
+                    return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
+                }
+            }
+
             return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: corsHeaders });
 
         } catch (error: any) {
@@ -493,8 +564,8 @@ function calculateRecord(data: any) {
 
     const paper_cost = data.paper_cost !== undefined ? round(data.paper_cost) : round(data.paper_quantity_kg * data.paper_rate);
     const paper_cost_per_tube = data.paper_cost_per_tube !== undefined ? round(data.paper_cost_per_tube) : safeDivide(paper_cost, production);
-    const paste_cost = round(data.paste_quantity * data.paste_rate);
-    const paste_cost_per_tube = safeDivide(paste_cost, production);
+    const paste_cost = data.paste_cost !== undefined ? round(data.paste_cost) : round(data.paste_quantity * data.paste_rate);
+    const paste_cost_per_tube = data.paste_cost_per_tube !== undefined ? round(data.paste_cost_per_tube) : safeDivide(paste_cost, production);
     const outer_paste_cost = round(data.outer_paste_quantity * data.outer_paste_rate);
     const outer_paste_cost_per_tube = safeDivide(outer_paste_cost, production);
     const packing_cost = round(data.packing_quantity * data.packing_rate);
