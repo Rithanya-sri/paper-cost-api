@@ -115,6 +115,23 @@ export default {
             });
         }
 
+        // Auto-migrations for missing columns
+        try {
+            await env.DB.prepare("ALTER TABLE labor_attendance ADD COLUMN work_location TEXT DEFAULT 'Cones'").run();
+        } catch (e) { /* ignores if exists */ }
+        try {
+            await env.DB.prepare("ALTER TABLE daily_production_records ADD COLUMN shift_production TEXT").run();
+        } catch (e) { /* ignores if exists */ }
+        try {
+            await env.DB.prepare("ALTER TABLE daily_production_records ADD COLUMN machine_production TEXT").run();
+        } catch (e) { /* ignores if exists */ }
+        try {
+            await env.DB.prepare("ALTER TABLE daily_production_records ADD COLUMN wood_cost REAL DEFAULT 0").run();
+        } catch (e) { /* ignores if exists */ }
+        try {
+            await env.DB.prepare("ALTER TABLE daily_production_records ADD COLUMN wood_cost_per_tube REAL DEFAULT 0").run();
+        } catch (e) { /* ignores if exists */ }
+
         try {
             // Labors route - MOVED TO TOP FOR PRIORITY
             if (path.includes('/api/labors')) {
