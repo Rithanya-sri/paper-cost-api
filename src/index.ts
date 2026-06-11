@@ -224,6 +224,24 @@ export default {
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
+                        ON CONFLICT(date) DO UPDATE SET
+                            production = excluded.production, outdone = excluded.outdone,
+                            paper_quantity_kg = excluded.paper_quantity_kg, paper_rate = excluded.paper_rate, paper_cost = excluded.paper_cost, paper_cost_per_tube = excluded.paper_cost_per_tube,
+                            paste_quantity = excluded.paste_quantity, paste_rate = excluded.paste_rate, paste_cost = excluded.paste_cost, paste_cost_per_tube = excluded.paste_cost_per_tube,
+                            outer_paste_quantity = excluded.outer_paste_quantity, outer_paste_rate = excluded.outer_paste_rate, outer_paste_cost = excluded.outer_paste_cost, outer_paste_cost_per_tube = excluded.outer_paste_cost_per_tube,
+                            packing_quantity = excluded.packing_quantity, packing_rate = excluded.packing_rate, packing_cost = excluded.packing_cost, packing_cost_per_tube = excluded.packing_cost_per_tube,
+                            labour_count = excluded.labour_count, labour_wage = excluded.labour_wage, labour_cost = excluded.labour_cost, labour_cost_per_tube = excluded.labour_cost_per_tube,
+                            eb_units = excluded.eb_units, electricity_rate = excluded.electricity_rate, eb_amount = excluded.eb_amount, eb_cost_per_tube = excluded.eb_cost_per_tube,
+                            overheads_amount = excluded.overheads_amount, overheads_cost_per_tube = excluded.overheads_cost_per_tube,
+                            food_amount = excluded.food_amount, food_cost_per_tube = excluded.food_cost_per_tube,
+                            others_amount = excluded.others_amount,
+                            waste_quantity_kg = excluded.waste_quantity_kg, waste_rate = excluded.waste_rate, waste_cost = excluded.waste_cost, waste_cost_per_tube = excluded.waste_cost_per_tube,
+                            wood_cost = excluded.wood_cost, wood_cost_per_tube = excluded.wood_cost_per_tube,
+                            grand_total_cost_per_tube = excluded.grand_total_cost_per_tube,
+                            rate_snapshot_used_that_day = excluded.rate_snapshot_used_that_day,
+                            shift_production = excluded.shift_production,
+                            machine_production = excluded.machine_production,
+                            updated_at = CURRENT_TIMESTAMP
                     `).bind(
                         calculated.date, calculated.production, calculated.outdone,
                         calculated.paper_quantity_kg, calculated.paper_rate, calculated.paper_cost, calculated.paper_cost_per_tube,
