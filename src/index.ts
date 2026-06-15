@@ -177,6 +177,11 @@ export default {
                     } else if (data.action === 'update_name') {
                         await env.DB.prepare('UPDATE labors SET name = ? WHERE id = ?').bind(data.name, id).run();
                         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                    } else if (data.action === 'toggle_hide') {
+                        if (!isOwner) return new Response(JSON.stringify({ error: "Only owners can hide/unhide labors" }), { status: 403, headers: corsHeaders });
+                        const hidden = data.is_hidden ? 1 : 0;
+                        await env.DB.prepare('UPDATE labors SET is_hidden = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(hidden, id).run();
+                        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                     }
                 }
             }
