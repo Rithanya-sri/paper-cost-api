@@ -1,9 +1,15 @@
-name = "paper-cost-api"
+name = "paper-cost-api-dev"
 main = "src/index.ts"
 compatibility_date = "2026-03-20"
 
 [[d1_databases]]
 binding = "DB"
+database_name = "paper_cost_db_dev"
+database_id = "b55d3930-8a7e-4252-9602-725b45c2c301"
+
+[env.production]
+name = "paper-cost-api"
+[[env.production.d1_databases]]
+binding = "DB"
 database_name = "paper_cost_db"
 database_id = "0f2f3005-1aaa-494a-997b-fde3d05ca605"
-
