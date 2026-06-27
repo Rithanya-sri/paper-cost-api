@@ -405,17 +405,32 @@ export default {
                     const result = await env.DB.prepare('INSERT INTO paper_varieties (name, current_stock) VALUES (?, ?)')
                         .bind(data.name, data.current_stock || 0)
                         .run();
+                    
+                    await env.DB.prepare('INSERT INTO raw_materials (material_name, variety, current_stock) VALUES (?, ?, ?)')
+                        .bind(`Paper - ${data.name}`, '', data.current_stock || 0).run();
+                        
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
                 }
                 if (method === 'PUT' && id) {
                     const data = await request.json() as any;
+                    const old = await env.DB.prepare('SELECT name FROM paper_varieties WHERE id = ?').bind(id).first() as any;
+                    
                     await env.DB.prepare('UPDATE paper_varieties SET name = ?, current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                         .bind(data.name, data.current_stock || 0, id)
                         .run();
+                        
+                    if (old) {
+                        await env.DB.prepare('UPDATE raw_materials SET material_name = ?, current_stock = ? WHERE material_name = ?')
+                            .bind(`Paper - ${data.name}`, data.current_stock || 0, `Paper - ${old.name}`).run();
+                    }
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
                 if (method === 'DELETE' && id) {
+                    const old = await env.DB.prepare('SELECT name FROM paper_varieties WHERE id = ?').bind(id).first() as any;
                     await env.DB.prepare('DELETE FROM paper_varieties WHERE id = ?').bind(id).run();
+                    if (old) {
+                        await env.DB.prepare('DELETE FROM raw_materials WHERE material_name = ?').bind(`Paper - ${old.name}`).run();
+                    }
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
             }
@@ -458,6 +473,15 @@ export default {
                             env.DB.prepare('UPDATE paper_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                                 .bind(u.balance_stock || 0, u.paper_variety_id)
                         );
+                        
+                        // Sync deduction to raw_materials
+                        const variety = await env.DB.prepare('SELECT name FROM paper_varieties WHERE id = ?').bind(u.paper_variety_id).first() as any;
+                        if (variety) {
+                            batchStatements.push(
+                                env.DB.prepare('UPDATE raw_materials SET current_stock = ? WHERE material_name = ?')
+                                    .bind(u.balance_stock || 0, `Paper - ${variety.name}`)
+                            );
+                        }
 
                         if (u.reels && Array.isArray(u.reels)) {
                             for (const r of u.reels) {
@@ -501,17 +525,32 @@ export default {
                     const result = await env.DB.prepare('INSERT INTO paste_varieties (name, current_stock) VALUES (?, ?)')
                         .bind(data.name, data.current_stock || 0)
                         .run();
+                        
+                    await env.DB.prepare('INSERT INTO raw_materials (material_name, variety, current_stock) VALUES (?, ?, ?)')
+                        .bind(`Paste - ${data.name}`, '', data.current_stock || 0).run();
+                        
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
                 }
                 if (method === 'PUT' && id) {
                     const data = await request.json() as any;
+                    const old = await env.DB.prepare('SELECT name FROM paste_varieties WHERE id = ?').bind(id).first() as any;
+                    
                     await env.DB.prepare('UPDATE paste_varieties SET name = ?, current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                         .bind(data.name, data.current_stock || 0, id)
                         .run();
+                        
+                    if (old) {
+                        await env.DB.prepare('UPDATE raw_materials SET material_name = ?, current_stock = ? WHERE material_name = ?')
+                            .bind(`Paste - ${data.name}`, data.current_stock || 0, `Paste - ${old.name}`).run();
+                    }
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
                 if (method === 'DELETE' && id) {
+                    const old = await env.DB.prepare('SELECT name FROM paste_varieties WHERE id = ?').bind(id).first() as any;
                     await env.DB.prepare('DELETE FROM paste_varieties WHERE id = ?').bind(id).run();
+                    if (old) {
+                        await env.DB.prepare('DELETE FROM raw_materials WHERE material_name = ?').bind(`Paste - ${old.name}`).run();
+                    }
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
             }
@@ -551,6 +590,15 @@ export default {
                             env.DB.prepare('UPDATE paste_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                                 .bind(u.balance_stock || 0, u.paste_variety_id)
                         );
+                        
+                        // Sync deduction to raw_materials
+                        const variety = await env.DB.prepare('SELECT name FROM paste_varieties WHERE id = ?').bind(u.paste_variety_id).first() as any;
+                        if (variety) {
+                            batchStatements.push(
+                                env.DB.prepare('UPDATE raw_materials SET current_stock = ? WHERE material_name = ?')
+                                    .bind(u.balance_stock || 0, `Paste - ${variety.name}`)
+                            );
+                        }
                     }
 
                     await env.DB.batch(batchStatements);
@@ -560,8 +608,8 @@ export default {
 
             // Wood Varieties
             if (path.startsWith('/api/wood-varieties')) {
-                const parts = path.split('/');
-                const id = parts.length > 2 ? parts[parts.length - 1] : null;
+                const parts = path.split('/').filter(Boolean);
+                const id = parts.length > 2 ? parts[2] : null;
 
                 if (method === 'GET') {
                     const varieties = await env.DB.prepare('SELECT * FROM wood_varieties ORDER BY name ASC').all();
@@ -573,17 +621,32 @@ export default {
                     const result = await env.DB.prepare('INSERT INTO wood_varieties (name, current_stock) VALUES (?, ?)')
                         .bind(data.name, data.current_stock || 0)
                         .run();
+                        
+                    await env.DB.prepare('INSERT INTO raw_materials (material_name, variety, current_stock) VALUES (?, ?, ?)')
+                        .bind(`Wood - ${data.name}`, '', data.current_stock || 0).run();
+                        
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
                 }
                 if (method === 'PUT' && id) {
                     const data = await request.json() as any;
+                    const old = await env.DB.prepare('SELECT name FROM wood_varieties WHERE id = ?').bind(id).first() as any;
+                    
                     await env.DB.prepare('UPDATE wood_varieties SET name = ?, current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                         .bind(data.name, data.current_stock || 0, id)
                         .run();
+                        
+                    if (old) {
+                        await env.DB.prepare('UPDATE raw_materials SET material_name = ?, current_stock = ? WHERE material_name = ?')
+                            .bind(`Wood - ${data.name}`, data.current_stock || 0, `Wood - ${old.name}`).run();
+                    }
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
                 if (method === 'DELETE' && id) {
+                    const old = await env.DB.prepare('SELECT name FROM wood_varieties WHERE id = ?').bind(id).first() as any;
                     await env.DB.prepare('DELETE FROM wood_varieties WHERE id = ?').bind(id).run();
+                    if (old) {
+                        await env.DB.prepare('DELETE FROM raw_materials WHERE material_name = ?').bind(`Wood - ${old.name}`).run();
+                    }
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
             }
@@ -623,10 +686,42 @@ export default {
                             env.DB.prepare('UPDATE wood_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                                 .bind(u.balance_stock || 0, u.wood_variety_id)
                         );
+                        
+                        // Sync deduction to raw_materials
+                        const variety = await env.DB.prepare('SELECT name FROM wood_varieties WHERE id = ?').bind(u.wood_variety_id).first() as any;
+                        if (variety) {
+                            batchStatements.push(
+                                env.DB.prepare('UPDATE raw_materials SET current_stock = ? WHERE material_name = ?')
+                                    .bind(u.balance_stock || 0, `Wood - ${variety.name}`)
+                            );
+                        }
                     }
 
                     await env.DB.batch(batchStatements);
                     return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
+                }
+            }
+
+            // Product Varieties
+            if (path.startsWith('/api/product-varieties')) {
+                const parts = path.split('/');
+                const id = parts.length > 2 ? parts[parts.length - 1] : null;
+
+                if (method === 'GET') {
+                    const result = await env.DB.prepare('SELECT * FROM product_varieties ORDER BY product_name ASC').all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    if (!data.product_name) return new Response(JSON.stringify({ error: 'Product Name is required' }), { status: 400, headers: corsHeaders });
+                    const result = await env.DB.prepare('INSERT INTO product_varieties (product_name, dimension, color) VALUES (?, ?, ?)')
+                        .bind(data.product_name, data.dimension || '', data.color || '')
+                        .run();
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+                if (method === 'DELETE' && id) {
+                    await env.DB.prepare('DELETE FROM product_varieties WHERE id = ?').bind(id).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
             }
 
@@ -688,13 +783,18 @@ export default {
                 }
                 if (method === 'PUT' && id) {
                     const data = await request.json() as any;
+                    let newStatus = data.status || 'Pending';
+                    const delQty = data.delivered_quantity || 0;
+                    if (delQty >= (data.quantity || 0)) {
+                        newStatus = 'Delivered';
+                    }
                     await env.DB.prepare(`
                         UPDATE orders SET 
-                        customer_id = ?, job_card_no = ?, product_name = ?, dimension = ?, color = ?, quantity = ?, raw_material_check = ?, delivery_date = ?, order_taken_date = ?, status = ?, stock_check_status = ?, updated_at = CURRENT_TIMESTAMP
+                        customer_id = ?, job_card_no = ?, product_name = ?, dimension = ?, color = ?, quantity = ?, raw_material_check = ?, delivery_date = ?, order_taken_date = ?, status = ?, stock_check_status = ?, delivered_quantity = ?, actual_delivery_date = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     `).bind(
                         data.customer_id, data.job_card_no || '', data.product_name || '', data.dimension || '',
-                        data.color || '', data.quantity || 0, data.raw_material_check || '', data.delivery_date || '', data.order_taken_date || '', data.status || 'Pending', data.stock_check_status || '', id
+                        data.color || '', data.quantity || 0, data.raw_material_check || '', data.delivery_date || '', data.order_taken_date || '', newStatus, data.stock_check_status || '', delQty, data.actual_delivery_date || null, id
                     ).run();
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
@@ -807,6 +907,22 @@ export default {
                                 data.notes || ''
                             ).run();
                         }
+                        
+                        // Sync back to varieties if it's a unified material
+                        const materialName = data.material_name || '';
+                        if (materialName.startsWith('Paper - ')) {
+                            const varietyName = materialName.substring(8);
+                            await env.DB.prepare('UPDATE paper_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?')
+                                .bind(data.current_stock || 0, varietyName).run();
+                        } else if (materialName.startsWith('Wood - ')) {
+                            const varietyName = materialName.substring(7);
+                            await env.DB.prepare('UPDATE wood_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?')
+                                .bind(data.current_stock || 0, varietyName).run();
+                        } else if (materialName.startsWith('Paste - ')) {
+                            const varietyName = materialName.substring(8);
+                            await env.DB.prepare('UPDATE paste_varieties SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?')
+                                .bind(data.current_stock || 0, varietyName).run();
+                        }
                     }
 
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
@@ -815,6 +931,113 @@ export default {
                 // DELETE raw material
                 if (method === 'DELETE' && id) {
                     await env.DB.prepare('DELETE FROM raw_materials WHERE id = ?').bind(id).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
+            // Product Stock Management
+            if (path.startsWith('/api/product-stock')) {
+                const parts = path.split('/');
+                const lastPart = parts[parts.length - 1];
+                const isCheck = lastPart === 'check';
+                const id = (!isCheck && parts.length > 3) ? lastPart : null;
+
+                // GET all product stock
+                if (method === 'GET' && !id && !isCheck) {
+                    const result = await env.DB.prepare('SELECT * FROM product_stock ORDER BY product_name ASC').all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+
+                // GET single product stock
+                if (method === 'GET' && id) {
+                    const result = await env.DB.prepare('SELECT * FROM product_stock WHERE id = ?').bind(id).first();
+                    return new Response(JSON.stringify(result), { headers: corsHeaders });
+                }
+
+                // POST check stock availability for an order
+                if (method === 'POST' && isCheck) {
+                    const data = await request.json() as any;
+                    const product_name = data.product_name || '';
+                    const required_quantity = Number(data.required_quantity) || 0;
+
+                    // Find matching product stock (by product_name, case-insensitive)
+                    const stockResult = await env.DB.prepare(
+                        'SELECT * FROM product_stock WHERE LOWER(product_name) = LOWER(?)'
+                    ).bind(product_name).first() as any;
+
+                    // Get total pending order quantity for this product
+                    const pendingOrders = await env.DB.prepare(
+                        `SELECT SUM(quantity - COALESCE(delivered_quantity, 0)) as total_pending 
+                         FROM orders WHERE LOWER(product_name) = LOWER(?) AND status = 'Pending'`
+                    ).bind(product_name).first() as any;
+
+                    const totalPending = Number(pendingOrders?.total_pending) || 0;
+                    const currentStock = stockResult ? Number(stockResult.current_stock) || 0 : 0;
+                    const netAvailable = currentStock - totalPending;
+
+                    let status: string;
+                    let needToPrepare = 0;
+                    if (netAvailable >= 0) {
+                        status = 'Enough to Deliver';
+                    } else {
+                        needToPrepare = Math.abs(netAvailable);
+                        status = 'Need to Prepare More';
+                    }
+
+                    return new Response(JSON.stringify({
+                        status,
+                        product_name,
+                        current_stock: currentStock,
+                        total_pending_orders: totalPending,
+                        net_available: netAvailable,
+                        required_quantity,
+                        need_to_prepare: needToPrepare,
+                        stock_found: !!stockResult
+                    }), { headers: corsHeaders });
+                }
+
+                // POST add new product stock
+                if (method === 'POST' && !isCheck) {
+                    const data = await request.json() as any;
+                    if (!data.product_name) return new Response(JSON.stringify({ error: 'Product name is required' }), { status: 400, headers: corsHeaders });
+                    const result = await env.DB.prepare(`
+                        INSERT INTO product_stock (product_name, variety, unit, daily_production, current_stock, minimum_stock, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    `).bind(
+                        data.product_name || '',
+                        data.variety || '',
+                        data.unit || 'Pieces',
+                        data.daily_production || 0,
+                        data.current_stock || 0,
+                        data.minimum_stock || 0
+                    ).run();
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+
+                // PUT update product stock
+                if (method === 'PUT' && id) {
+                    const data = await request.json() as any;
+                    await env.DB.prepare(`
+                        UPDATE product_stock SET
+                        product_name = ?, variety = ?, unit = ?, daily_production = ?,
+                        current_stock = ?, minimum_stock = ?,
+                        last_updated = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    `).bind(
+                        data.product_name || '',
+                        data.variety || '',
+                        data.unit || 'Pieces',
+                        data.daily_production || 0,
+                        data.current_stock || 0,
+                        data.minimum_stock || 0,
+                        id
+                    ).run();
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+
+                // DELETE product stock
+                if (method === 'DELETE' && id) {
+                    await env.DB.prepare('DELETE FROM product_stock WHERE id = ?').bind(id).run();
                     return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
             }
