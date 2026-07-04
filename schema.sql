@@ -216,3 +216,13 @@ CREATE TABLE IF NOT EXISTS orders (
 
 -- Index for faster customer queries
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
+
+-- 10. Product Varieties (For Order Tracking)
+CREATE TABLE IF NOT EXISTS product_varieties (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_name TEXT NOT NULL,
+  dimension TEXT,
+  color TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
