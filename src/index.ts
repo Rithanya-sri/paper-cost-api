@@ -714,10 +714,44 @@ export default {
                 if (method === 'POST') {
                     const data = await request.json() as any;
                     if (!data.product_name) return new Response(JSON.stringify({ error: 'Product Name is required' }), { status: 400, headers: corsHeaders });
+                    
                     const result = await env.DB.prepare('INSERT INTO product_varieties (product_name, dimension, color) VALUES (?, ?, ?)')
                         .bind(data.product_name, data.dimension || '', data.color || '')
                         .run();
+                    
+                    // Also create a product_stock entry
+                    await env.DB.prepare(`
+                        INSERT INTO product_stock (product_name, variety, unit, daily_production, current_stock, minimum_stock, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    `).bind(
+                        data.product_name,
+                        (data.dimension ? data.dimension + ' ' : '') + (data.color || ''),
+                        'Pieces',
+                        0,
+                        0,
+                        0
+                    ).run();
+                    
                     return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+                if (method === 'PUT' && id) {
+                    const data = await request.json() as any;
+                    if (!data.product_name) return new Response(JSON.stringify({ error: 'Product Name is required' }), { status: 400, headers: corsHeaders });
+                    
+                    // Get old name to update product_stock
+                    const oldVariety = await env.DB.prepare('SELECT product_name FROM product_varieties WHERE id = ?').bind(id).first() as any;
+                    
+                    await env.DB.prepare('UPDATE product_varieties SET product_name = ?, dimension = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        .bind(data.product_name, data.dimension || '', data.color || '', id)
+                        .run();
+                        
+                    if (oldVariety && oldVariety.product_name) {
+                        await env.DB.prepare('UPDATE product_stock SET product_name = ?, variety = ?, updated_at = CURRENT_TIMESTAMP WHERE product_name = ?')
+                            .bind(data.product_name, (data.dimension ? data.dimension + ' ' : '') + (data.color || ''), oldVariety.product_name)
+                            .run();
+                    }
+                    
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
                 }
                 if (method === 'DELETE' && id) {
                     await env.DB.prepare('DELETE FROM product_varieties WHERE id = ?').bind(id).run();
@@ -804,6 +838,70 @@ export default {
                 }
             }
 
+            // Order Deliveries (partial delivery tracking)
+            if (path.startsWith('/api/order-deliveries')) {
+                const parts = path.split('/').filter(Boolean);
+                const id = parts.length > 2 ? parts[parts.length - 1] : null;
+
+                if (method === 'GET') {
+                    const order_id = url.searchParams.get('order_id');
+                    if (!order_id) return new Response(JSON.stringify({ error: 'order_id is required' }), { status: 400, headers: corsHeaders });
+                    const result = await env.DB.prepare('SELECT * FROM order_deliveries WHERE order_id = ? ORDER BY delivery_number ASC').bind(order_id).all();
+                    return new Response(JSON.stringify(result.results), { headers: corsHeaders });
+                }
+                if (method === 'POST') {
+                    const data = await request.json() as any;
+                    if (!data.order_id) return new Response(JSON.stringify({ error: 'order_id is required' }), { status: 400, headers: corsHeaders });
+                    // Get next delivery_number
+                    const existing = await env.DB.prepare('SELECT COUNT(*) as cnt FROM order_deliveries WHERE order_id = ?').bind(data.order_id).first() as any;
+                    const deliveryNumber = (existing?.cnt || 0) + 1;
+                    const result = await env.DB.prepare(`
+                        INSERT INTO order_deliveries (order_id, delivery_number, quantity, delivery_date, notes)
+                        VALUES (?, ?, ?, ?, ?)
+                    `).bind(data.order_id, deliveryNumber, data.quantity || 0, data.delivery_date || null, data.notes || null).run();
+
+                    // Update orders.delivered_quantity
+                    const totalDelivered = await env.DB.prepare('SELECT SUM(quantity) as total FROM order_deliveries WHERE order_id = ?').bind(data.order_id).first() as any;
+                    const order = await env.DB.prepare('SELECT quantity, status FROM orders WHERE id = ?').bind(data.order_id).first() as any;
+                    const newDelivered = totalDelivered?.total || 0;
+                    const newStatus = newDelivered >= (order?.quantity || 0) ? 'Delivered' : (order?.status || 'Pending');
+                    await env.DB.prepare('UPDATE orders SET delivered_quantity = ?, actual_delivery_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        .bind(newDelivered, data.delivery_date || null, newStatus, data.order_id).run();
+
+                    return new Response(JSON.stringify({ success: true, id: result.meta.last_row_id }), { status: 201, headers: corsHeaders });
+                }
+                if (method === 'PUT' && id) {
+                    const data = await request.json() as any;
+                    await env.DB.prepare('UPDATE order_deliveries SET quantity = ?, delivery_date = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                        .bind(data.quantity || 0, data.delivery_date || null, data.notes || null, id).run();
+
+                    // Recalculate delivered_quantity for order
+                    const delivery = await env.DB.prepare('SELECT order_id FROM order_deliveries WHERE id = ?').bind(id).first() as any;
+                    if (delivery) {
+                        const totalDelivered = await env.DB.prepare('SELECT SUM(quantity) as total FROM order_deliveries WHERE order_id = ?').bind(delivery.order_id).first() as any;
+                        const order = await env.DB.prepare('SELECT quantity, status FROM orders WHERE id = ?').bind(delivery.order_id).first() as any;
+                        const newDelivered = totalDelivered?.total || 0;
+                        const newStatus = newDelivered >= (order?.quantity || 0) ? 'Delivered' : 'Pending';
+                        await env.DB.prepare('UPDATE orders SET delivered_quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                            .bind(newDelivered, newStatus, delivery.order_id).run();
+                    }
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+                if (method === 'DELETE' && id) {
+                    const delivery = await env.DB.prepare('SELECT order_id FROM order_deliveries WHERE id = ?').bind(id).first() as any;
+                    await env.DB.prepare('DELETE FROM order_deliveries WHERE id = ?').bind(id).run();
+                    if (delivery) {
+                        const totalDelivered = await env.DB.prepare('SELECT SUM(quantity) as total FROM order_deliveries WHERE order_id = ?').bind(delivery.order_id).first() as any;
+                        const order = await env.DB.prepare('SELECT quantity FROM orders WHERE id = ?').bind(delivery.order_id).first() as any;
+                        const newDelivered = totalDelivered?.total || 0;
+                        const newStatus = newDelivered >= (order?.quantity || 0) ? 'Delivered' : 'Pending';
+                        await env.DB.prepare('UPDATE orders SET delivered_quantity = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                            .bind(newDelivered, newStatus, delivery.order_id).run();
+                    }
+                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+                }
+            }
+
             // Raw Materials Stock Management
             if (path.startsWith('/api/raw-materials')) {
                 const parts = path.split('/');
@@ -824,15 +922,17 @@ export default {
                     return new Response(JSON.stringify(result), { headers: corsHeaders });
                 }
 
-                // POST check stock availability
+                // POST check stock availability (and deduct if sufficient)
                 if (method === 'POST' && isCheck) {
                     const data = await request.json() as any;
                     // data.required_materials = [{material_id, required_quantity}]
                     const required = data.required_materials || [];
                     const insufficient: any[] = [];
                     let allSufficient = true;
+                    const deductionStatements = [];
 
                     for (const req of required) {
+                        if (req.required_quantity <= 0) continue;
                         const mat = await env.DB.prepare('SELECT * FROM raw_materials WHERE id = ?').bind(req.material_id).first() as any;
                         if (mat) {
                             if (mat.current_stock < req.required_quantity) {
@@ -846,8 +946,19 @@ export default {
                                     required_quantity: req.required_quantity,
                                     shortage: req.required_quantity - mat.current_stock
                                 });
+                            } else {
+                                // Prepare deduction statement just in case all are sufficient
+                                deductionStatements.push(
+                                    env.DB.prepare('UPDATE raw_materials SET current_stock = current_stock - ?, last_updated = CURRENT_TIMESTAMP WHERE id = ?')
+                                        .bind(req.required_quantity, req.material_id)
+                                );
                             }
                         }
+                    }
+
+                    // Actually deduct the stock from the DB if all are sufficient
+                    if (allSufficient && deductionStatements.length > 0) {
+                        await env.DB.batch(deductionStatements);
                     }
 
                     return new Response(JSON.stringify({
