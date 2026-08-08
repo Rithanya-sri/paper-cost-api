@@ -1,0 +1,1 @@
+ALTER TABLE labor_attendance ADD COLUMN ot REAL DEFAULT 0;

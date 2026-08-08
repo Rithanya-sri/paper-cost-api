@@ -379,7 +379,7 @@ export default {
                     const data = await request.json() as any;
                     await env.DB.prepare('DELETE FROM labor_attendance WHERE date = ?').bind(data.date).run();
                     for (const item of data.items) {
-                        await env.DB.prepare('INSERT INTO labor_attendance (date, labor_id, shifts, salary_rate_at_time, work_location) VALUES (?, ?, ?, ?, ?)').bind(data.date, item.labor_id, item.shifts, item.salary_rate_at_time, item.work_location || 'Cones').run();
+                        await env.DB.prepare('INSERT INTO labor_attendance (date, labor_id, shifts, salary_rate_at_time, work_location, ot) VALUES (?, ?, ?, ?, ?, ?)').bind(data.date, item.labor_id, item.shifts, item.salary_rate_at_time, item.work_location || 'Cones', item.ot || 0).run();
                     }
                     return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
                 }
