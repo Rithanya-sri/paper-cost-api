@@ -131,6 +131,9 @@ export default {
         try {
             await env.DB.prepare("ALTER TABLE daily_production_records ADD COLUMN wood_cost_per_tube REAL DEFAULT 0").run();
         } catch (e) { /* ignores if exists */ }
+        try {
+            await env.DB.prepare("ALTER TABLE labor_attendance ADD COLUMN ot_amount REAL DEFAULT NULL").run();
+        } catch (e) { /* ignores if exists */ }
 
         try {
             // Labors route - MOVED TO TOP FOR PRIORITY
@@ -379,7 +382,7 @@ export default {
                     const data = await request.json() as any;
                     await env.DB.prepare('DELETE FROM labor_attendance WHERE date = ?').bind(data.date).run();
                     for (const item of data.items) {
-                        await env.DB.prepare('INSERT INTO labor_attendance (date, labor_id, shifts, salary_rate_at_time, work_location, ot) VALUES (?, ?, ?, ?, ?, ?)').bind(data.date, item.labor_id, item.shifts, item.salary_rate_at_time, item.work_location || 'Cones', item.ot || 0).run();
+                        await env.DB.prepare('INSERT INTO labor_attendance (date, labor_id, shifts, salary_rate_at_time, work_location, ot, ot_amount) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(data.date, item.labor_id, item.shifts, item.salary_rate_at_time, item.work_location || 'Cones', item.ot || 0, item.ot_amount !== undefined ? item.ot_amount : null).run();
                     }
                     return new Response(JSON.stringify({ success: true }), { status: 201, headers: corsHeaders });
                 }
