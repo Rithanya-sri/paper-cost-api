@@ -779,7 +779,7 @@ export default {
                     // Get old name to update product_stock
                     const oldVariety = await env.DB.prepare('SELECT product_name FROM product_varieties WHERE id = ?').bind(id).first() as any;
                     
-                    await env.DB.prepare('UPDATE product_varieties SET product_name = ?, dimension = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                    await env.DB.prepare('UPDATE product_varieties SET product_name = ?, dimension = ?, color = ? WHERE id = ?')
                         .bind(data.product_name, data.dimension || '', data.color || '', id)
                         .run();
                         
