@@ -157,6 +157,9 @@ export default {
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )`).run();
         } catch (e) { /* ignores if exists */ }
+        try {
+            await env.DB.prepare("ALTER TABLE product_stock ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP").run();
+        } catch (e) { /* ignores if column already exists */ }
 
         try {
             // Labors route - MOVED TO TOP FOR PRIORITY
