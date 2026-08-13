@@ -134,6 +134,29 @@ export default {
         try {
             await env.DB.prepare("ALTER TABLE labor_attendance ADD COLUMN ot_amount REAL DEFAULT NULL").run();
         } catch (e) { /* ignores if exists */ }
+        try {
+            await env.DB.prepare(`CREATE TABLE IF NOT EXISTS product_varieties (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_name TEXT NOT NULL,
+                dimension TEXT DEFAULT '',
+                color TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )`).run();
+        } catch (e) { /* ignores if exists */ }
+        try {
+            await env.DB.prepare(`CREATE TABLE IF NOT EXISTS product_stock (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_name TEXT NOT NULL,
+                variety TEXT DEFAULT '',
+                unit TEXT NOT NULL DEFAULT 'Pieces',
+                daily_production INTEGER NOT NULL DEFAULT 0,
+                current_stock INTEGER NOT NULL DEFAULT 0,
+                minimum_stock INTEGER NOT NULL DEFAULT 0,
+                last_updated TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )`).run();
+        } catch (e) { /* ignores if exists */ }
 
         try {
             // Labors route - MOVED TO TOP FOR PRIORITY
