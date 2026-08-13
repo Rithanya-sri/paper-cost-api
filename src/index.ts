@@ -810,7 +810,7 @@ export default {
                         .run();
                         
                     if (oldVariety && oldVariety.product_name) {
-                        await env.DB.prepare('UPDATE product_stock SET product_name = ?, variety = ?, updated_at = CURRENT_TIMESTAMP WHERE product_name = ?')
+                        await env.DB.prepare('UPDATE product_stock SET product_name = ?, variety = ?, last_updated = CURRENT_TIMESTAMP WHERE product_name = ?')
                             .bind(data.product_name, (data.dimension ? data.dimension + ' ' : '') + (data.color || ''), oldVariety.product_name)
                             .run();
                     }
