@@ -103,7 +103,6 @@ export default {
                 headers: corsHeaders,
             });
         }
-
         const email = (payload.email as string).toLowerCase();
         const isOwner = OWNER_EMAILS.includes(email);
         const isSupervisor = SUPERVISOR_EMAILS.includes(email);
