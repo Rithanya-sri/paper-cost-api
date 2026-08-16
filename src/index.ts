@@ -85,6 +85,11 @@ export default {
             });
         }
 
+        // Run critical schema migrations before auth (ensures columns exist on first request after deploy)
+        try {
+            await env.DB.prepare("ALTER TABLE product_stock ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP").run();
+        } catch (e) { /* column already exists, ignore */ }
+
         // Authentication Middleware
         const authHeader = request.headers.get("Authorization");
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -1195,7 +1200,7 @@ export default {
                         UPDATE product_stock SET
                         product_name = ?, variety = ?, unit = ?, daily_production = ?,
                         current_stock = ?, minimum_stock = ?,
-                        last_updated = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                        last_updated = CURRENT_TIMESTAMP
                         WHERE id = ?
                     `).bind(
                         data.product_name || '',
